@@ -1,0 +1,43 @@
+name: 🏆 Actualizar Agenda Deportiva
+
+on:
+  # Corre todos los días a las 9:00 AM hora Argentina (UTC-3 → 12:00 UTC)
+  schedule:
+    - cron: '0 12 * * *'
+
+  # Permite ejecutarlo manualmente desde GitHub → Actions
+  workflow_dispatch:
+
+jobs:
+  scrape-agenda:
+    name: Scraping tvlibree.com → Firestore
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: 🟢 Configurar Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: scripts/package.json
+
+      - name: 📦 Instalar dependencias del scraper
+        working-directory: scripts
+        run: npm install
+
+      - name: 🚀 Ejecutar scraper de agenda
+        working-directory: scripts
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: node scrape-agenda.js
+
+      - name: ✅ Resultado
+        if: success()
+        run: echo "Agenda actualizada correctamente para $(date +'%d/%m/%Y')"
+
+      - name: ❌ Error
+        if: failure()
+        run: echo "El scraper falló. Verificá los logs de arriba."
