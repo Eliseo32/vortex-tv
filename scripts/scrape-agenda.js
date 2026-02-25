@@ -62,7 +62,15 @@ async function getTeamLogo(teamName) {
 
     try {
         await sleep(300); // Evitar rate limit del free tier
-        let logo = await fetchLogo(teamName);
+        // Fix para fetch nativo en Node 20 si quitaron node-fetch global
+        let res = await fetch(`https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=${encodeURIComponent(teamName)}`);
+        if (!res.ok) throw new Error('Bad response');
+        let data = await res.json();
+        let logo = null;
+        if (data?.teams?.length) {
+            const soccerTeam = data.teams.find(t => t.strSport === 'Soccer' || t.strSport === 'Football') || data.teams[0];
+            logo = soccerTeam?.strBadge || soccerTeam?.strTeamBadge || soccerTeam?.strLogo || null;
+        }
 
         // Fallback: nombre sin tildes (ej: "Atlético" → "Atletico")
         if (!logo) {
@@ -128,13 +136,14 @@ async function main() {
     console.log('🚀 Iniciando scraper de nowfutbol.xyz...');
     console.log(`📅 Fecha: ${new Date().toLocaleDateString('es-AR')}`);
 
-    // 1. Descarga el JSON de nowfutbol
-    console.log('\n🌐 Descargando combined_events.json...');
-    const res = await fetch('https://nowfutbol.xyz/app/combined_events.json', {
+    // 1. Descarga el JSON de nowfutbol (usando el Proxy de AllOrigins para evadir Error 403 de Cloudflare)
+    console.log('\n🌐 Descargando combined_events.json vía Proxy...');
+    const targetUrl = 'https://nowfutbol.xyz/app/combined_events.json';
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+
+    const res = await fetch(proxyUrl, {
         headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json, */*',
-            'Referer': 'https://nowfutbol.xyz/app/',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
     });
 
@@ -142,7 +151,7 @@ async function main() {
     const events = await res.json();
     console.log(`✅ ${events.length} eventos encontrados`);
 
-    if (events.length === 0) {
+    if (!Array.isArray(events) || events.length === 0) {
         console.log('⚠️  No hay eventos hoy.');
         await clearTodayAgenda();
         return;
