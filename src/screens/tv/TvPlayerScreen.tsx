@@ -3,7 +3,8 @@ import { View, ActivityIndicator, BackHandler, Text, StyleSheet } from 'react-na
 import { WebView } from 'react-native-webview';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { ShieldCheck, AlertCircle } from 'lucide-react-native';
-import { Video, ResizeMode } from 'expo-av';
+import { Video as ExpoVideo, ResizeMode } from 'expo-av';
+import Video from 'react-native-video';
 
 export default function TvPlayerScreen() {
   const route = useRoute<any>();
@@ -16,7 +17,43 @@ export default function TvPlayerScreen() {
   const [isLocked, setIsLocked] = useState(false);
 
   const cleanUrl = videoUrl ? videoUrl.trim() : '';
-  const isDirectVideo = cleanUrl.toLowerCase().includes('.mp4') || cleanUrl.toLowerCase().includes('.m3u8');
+  const isDash = cleanUrl.toLowerCase().includes('.mpd');
+  const isDirectVideo = !isDash && (cleanUrl.toLowerCase().includes('.mp4') || cleanUrl.toLowerCase().includes('.m3u8'));
+
+  // Extraer parámetros DRM y referer del query string
+  let drmKeyId = '';
+  let drmKey = '';
+  let finalUrl = cleanUrl;
+
+  try {
+    const questionIdx = cleanUrl.indexOf('?');
+    if (questionIdx > -1) {
+      const paramStr = cleanUrl.slice(questionIdx + 1);
+      const params = new URLSearchParams(paramStr);
+      drmKeyId = params.get('drmKeyId') || '';
+      drmKey = params.get('drmKey') || '';
+      params.delete('drmKeyId');
+      params.delete('drmKey');
+      params.delete('drmReferer');
+      const remaining = params.toString();
+      finalUrl = cleanUrl.slice(0, questionIdx) + (remaining ? '?' + remaining : '');
+    }
+  } catch (e) {
+    finalUrl = cleanUrl.split('?')[0];
+  }
+
+  // ─── Configuración del reproductor nativo DRM (ExoPlayer) ───────────────
+  const drmConfig = (drmKeyId && drmKey) ? {
+    type: 'clearkey',
+    licenseServer: `data:application/json;base64,${btoa(JSON.stringify({
+      keys: [{
+        kty: "oct",
+        k: Buffer.from(drmKey, 'hex').toString('base64url'),
+        kid: Buffer.from(drmKeyId, 'hex').toString('base64url')
+      }],
+      type: "temporary"
+    }))}`
+  } : undefined;
 
   const isLamovie = cleanUrl.toLowerCase().includes('lamovie') || cleanUrl.toLowerCase().includes('lamov');
   const timeoutDuration = isLamovie ? 35000 : 10000;
@@ -252,7 +289,9 @@ export default function TvPlayerScreen() {
   `;
 
   const handleMessage = (event: any) => {
-    if (event.nativeEvent.data === 'video_playing') setIsVideoPlaying(true);
+    const msg = event.nativeEvent.data;
+    if (msg === 'video_playing') setIsVideoPlaying(true);
+    if (msg.startsWith('dash_log:')) console.log('[ShakaPlayer]', msg.replace('dash_log:', ''));
   };
 
   const handleShouldStartLoadWithRequest = (request: any) => {
@@ -270,12 +309,33 @@ export default function TvPlayerScreen() {
 
   if (!cleanUrl) return <View className="flex-1 bg-black items-center justify-center"><AlertCircle color="#FACC15" size={64} /></View>;
 
-  const isWaitScreenVisible = !isDirectVideo && !isVideoPlaying;
+  const isWaitScreenVisible = !isDash && !isDirectVideo && !isVideoPlaying;
 
   return (
     <View className="flex-1 bg-black">
-      {isDirectVideo ? (
-        <Video style={StyleSheet.absoluteFillObject} source={{ uri: cleanUrl }} useNativeControls={true} resizeMode={ResizeMode.CONTAIN} shouldPlay={true} />
+      {isDash ? (() => {
+        return (
+          <View style={StyleSheet.absoluteFillObject} className="bg-black">
+            {(!isVideoPlaying) && (
+              <View style={StyleSheet.absoluteFillObject} className="bg-[#050505] items-center justify-center z-40 absolute">
+                <ActivityIndicator size="large" color="#FACC15" className="mb-4" />
+                <Text className="text-vortex-yellow font-black text-xl uppercase tracking-widest drop-shadow-md">
+                  Conectando al Servidor DRM...
+                </Text>
+              </View>
+            )}
+            <Video
+              source={{ uri: finalUrl }}
+              style={StyleSheet.absoluteFillObject}
+              resizeMode="contain"
+              drm={drmConfig as any}
+              controls={true}
+              onLoad={() => setIsVideoPlaying(true)}
+            />
+          </View>
+        );
+      })() : isDirectVideo ? (
+        <Video style={StyleSheet.absoluteFillObject} source={{ uri: cleanUrl }} controls={true} resizeMode="contain" />
       ) : (
         <View style={StyleSheet.absoluteFillObject} className="bg-black">
 

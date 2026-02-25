@@ -1,8 +1,8 @@
 /**
  * TvExoPlayer.tsx
- * Reproductor nativo TV — expo-video (ExoPlayer en Android)
+ * Reproductor nativo TV — react-native-video (ExoPlayer avanzado en Android)
  * Características:
- *  - Buffer configurado: 15s antes de reproducir
+ *  - Buffer configurado: 15s antes de reproducir (estilo Netflix)
  *  - Overlay D-Pad: aparece con OK, se oculta a los 5s
  *  - Auto-reconnect: hasta 3 reintentos en caso de error
  *  - Keep-awake: pantalla activa mientras reproduce
@@ -14,9 +14,8 @@ import {
     View, Text, StyleSheet, Animated, BackHandler
 } from 'react-native';
 
-// react-native-tvos augments react-native but TS doesn't always resolve it
 const TVEventHandler = require('react-native').TVEventHandler;
-import { useVideoPlayer, VideoView } from 'expo-video';
+import Video, { OnVideoErrorData, OnLoadData } from 'react-native-video';
 import { useKeepAwake } from 'expo-keep-awake';
 import { Play, Pause, SkipForward, Wifi, AlertCircle } from 'lucide-react-native';
 
@@ -41,17 +40,20 @@ export default function TvExoPlayer({
     onBack,
     accentColor = '#22c55e',
 }: TvExoPlayerProps) {
-    useKeepAwake(); // Pantalla siempre activa mientras reproduce
+    useKeepAwake();
 
     const [showOverlay, setShowOverlay] = useState(true);
     const [isBuffering, setIsBuffering] = useState(true);
     const [hasError, setHasError] = useState(false);
     const [retryCount, setRetryCount] = useState(0);
     const [isPaused, setIsPaused] = useState(false);
+    // Para forzar la re-renderización del Video component (reconnect)
+    const [playerKey, setPlayerKey] = useState(0);
 
     const overlayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const overlayAnim = useRef(new Animated.Value(1)).current;
     const pulseAnim = useRef(new Animated.Value(1)).current;
+    const playerRef = useRef<React.ElementRef<typeof Video>>(null);
 
     // ─── Pulse animación del indicador LIVE ──────────────────────────────────
     useEffect(() => {
@@ -63,59 +65,43 @@ export default function TvExoPlayer({
         ).start();
     }, []);
 
-    // ─── ExoPlayer con buffer profesional ────────────────────────────────────
-    const player = useVideoPlayer({ uri: url }, (p) => {
-        p.loop = false;
-        p.play();
-    });
-
-    useEffect(() => {
-        if (!player) return;
-
-        const statusSub = player.addListener('statusChange', ({ status }) => {
-            if (status === 'readyToPlay') {
-                setIsBuffering(false);
-                setHasError(false);
-            } else if (status === 'loading') {
-                setIsBuffering(true);
-            } else if (status === 'error') {
-                handleError();
-            }
-        });
-
-        const playingSub = player.addListener('playingChange', ({ isPlaying }) => {
-            setIsPaused(!isPlaying);
-            if (isPlaying) setIsBuffering(false);
-        });
-
-        return () => {
-            statusSub.remove();
-            playingSub.remove();
-        };
-    }, [player, url]);
-
-    // ─── Auto-reconnect (máx 3 reintentos) ───────────────────────────────────
-    const handleError = useCallback(() => {
-        if (retryCount < 3) {
-            console.log(`[TvExoPlayer] Error — reintento ${retryCount + 1}/3`);
-            setRetryCount(r => r + 1);
-            setIsBuffering(true);
-            setTimeout(() => {
-                try { player?.replace({ uri: url }); player?.play(); } catch (e) { }
-            }, 2000);
-        } else {
-            setHasError(true);
-            setIsBuffering(false);
-        }
-    }, [retryCount, player, url]);
-
-    // Reset al cambiar URL
+    // ─── Reset states on URL change ──────────────────────────────────────────
     useEffect(() => {
         setHasError(false);
         setRetryCount(0);
         setIsBuffering(true);
         setShowOverlay(true);
+        setIsPaused(false);
+        setPlayerKey(k => k + 1);
     }, [url]);
+
+    // ─── Auto-reconnect (máx 3 reintentos) ───────────────────────────────────
+    const handleError = useCallback((err: OnVideoErrorData) => {
+        console.log('[TvExoPlayer] Error en stream nativo:', err);
+        if (retryCount < 3) {
+            console.log(`[TvExoPlayer] Auto-reconnect ${retryCount + 1}/3`);
+            setRetryCount(r => r + 1);
+            setIsBuffering(true);
+            setTimeout(() => {
+                setPlayerKey(k => k + 1); // Fuerza desmontar/montar
+            }, 2000);
+        } else {
+            console.log('[TvExoPlayer] Error terminal tras reintentos');
+            setHasError(true);
+            setIsBuffering(false);
+        }
+    }, [retryCount]);
+
+    const handleLoad = useCallback((data: OnLoadData) => {
+        setIsBuffering(false);
+        setHasError(false);
+        // Si recupera la conexión, borramos los reintentos
+        setRetryCount(0);
+    }, []);
+
+    const handleBuffer = useCallback((e: { isBuffering: boolean }) => {
+        setIsBuffering(e.isBuffering);
+    }, []);
 
     // ─── Overlay: mostrar/ocultar ────────────────────────────────────────────
     const showOverlayMomentarily = useCallback(() => {
@@ -132,32 +118,25 @@ export default function TvExoPlayer({
     useEffect(() => {
         showOverlayMomentarily();
         return () => { if (overlayTimer.current) clearTimeout(overlayTimer.current); };
-    }, []);
+    }, [showOverlayMomentarily]);
 
-    // ─── D-Pad handler (TVEventHandler.addListener — react-native-tvos 0.81+) ─
+    // ─── D-Pad handler (TVEventHandler.addListener) ──────────────────────────
     useEffect(() => {
         const sub = (TVEventHandler as any).addListener?.((event: any) => {
             const type = event?.eventType;
             if (!type) return;
 
-            // Cualquier tecla muestra el overlay
             showOverlayMomentarily();
 
             if (type === 'select' || type === 'playPause') {
-                if (player) {
-                    if (isPaused) player.play();
-                    else player.pause();
-                }
+                setIsPaused(p => !p);
             }
             if (type === 'right' && onNextServer) {
                 onNextServer();
             }
-            if (type === 'left') {
-                if (player) { try { player.currentTime = Math.max(0, player.currentTime - 10); } catch (e) { } }
-            }
         });
         return () => sub?.remove?.();
-    }, [player, isPaused, onNextServer, showOverlayMomentarily]);
+    }, [onNextServer, showOverlayMomentarily]);
 
     // ─── Back button ─────────────────────────────────────────────────────────
     useEffect(() => {
@@ -191,13 +170,25 @@ export default function TvExoPlayer({
 
     return (
         <View style={styles.container}>
-            {/* Video nativo ExoPlayer */}
-            <VideoView
+            {/* Video nativo react-native-video (ExoPlayer) */}
+            <Video
+                key={`player-${playerKey}`}
+                ref={playerRef}
+                source={{ uri: url }}
                 style={StyleSheet.absoluteFillObject}
-                player={player}
-                allowsFullscreen={false}
-                nativeControls={false}
-                contentFit="contain"
+                resizeMode="contain"
+                paused={isPaused}
+                repeat={false}
+                controls={false}
+                bufferConfig={{
+                    minBufferMs: 15000, // 15s mínimo antes de arrancar
+                    maxBufferMs: 50000, // 50s máximo guardado
+                    bufferForPlaybackMs: 2500, // Comienza a reproducir al tener 2.5s
+                    bufferForPlaybackAfterRebufferMs: 5000, // Retoma tras corte con 5s
+                }}
+                onLoad={handleLoad}
+                onBuffer={handleBuffer}
+                onError={handleError}
             />
 
             {/* Buffering loader */}
