@@ -97,7 +97,11 @@ function parseTitle(title = '') {
 
 // ─── Filtra opciones descartando links inútiles ───────────────────────────────
 function cleanOpciones(opciones = {}) {
-    const SKIP = ['googletagmanager', 'analytics', 'gtag'];
+    const SKIP = [
+        'googletagmanager',
+        'analytics',
+        'gtag',
+    ];
     const clean = {};
     for (const [key, url] of Object.entries(opciones)) {
         if (!url || typeof url !== 'string') continue;
