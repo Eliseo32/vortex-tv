@@ -1,16 +1,16 @@
 name: 🏆 Actualizar Agenda Deportiva
 
 on:
-  # Corre todos los días a las 9:00 AM hora Argentina (UTC-3 → 12:00 UTC)
+  # Corre cada 2 horas para mantener el estado EN VIVO actualizado
   schedule:
-    - cron: '0 12 * * *'
+    - cron: '0 */2 * * *'
 
   # Permite ejecutarlo manualmente desde GitHub → Actions
   workflow_dispatch:
 
 jobs:
   scrape-agenda:
-    name: Scraping tvlibree.com → Firestore
+    name: Scraping nowfutbol.xyz → Firestore
     runs-on: ubuntu-latest
 
     steps:
@@ -36,7 +36,7 @@ jobs:
 
       - name: ✅ Resultado
         if: success()
-        run: echo "Agenda actualizada correctamente para $(date +'%d/%m/%Y')"
+        run: echo "Agenda actualizada correctamente para $(date +'%d/%m/%Y %H:%M UTC')"
 
       - name: ❌ Error
         if: failure()
