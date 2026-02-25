@@ -13,7 +13,8 @@
       "backgroundColor": "#050505"
     },
     "plugins": [
-      "@react-native-tvos/config-tv"
+      "@react-native-tvos/config-tv",
+      "react-native-video"
     ],
     "ios": {
       "supportsTablet": true
