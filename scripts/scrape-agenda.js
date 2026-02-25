@@ -36,19 +36,43 @@ const db = getFirestore();
 
 // ─── TheSportsDB: obtiene el escudo de un equipo ─────────────────────────────
 const logoCache = {};
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+async function fetchLogo(name) {
+    const encoded = encodeURIComponent(name);
+    const res = await fetch(
+        `https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=${encoded}`,
+        { headers: { 'User-Agent': 'Mozilla/5.0' } }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data?.teams?.length) return null;
+
+    // Priorizar equipos de fútbol/soccer sobre otros deportes
+    const soccerTeam = data.teams.find(t =>
+        t.strSport === 'Soccer' || t.strSport === 'Football'
+    ) || data.teams[0];
+
+    return soccerTeam?.strBadge || soccerTeam?.strTeamBadge || soccerTeam?.strLogo || null;
+}
 
 async function getTeamLogo(teamName) {
     if (!teamName || teamName.length < 2) return null;
     if (logoCache[teamName]) return logoCache[teamName];
 
     try {
-        const encoded = encodeURIComponent(teamName);
-        const res = await fetch(
-            `https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=${encoded}`
-        );
-        if (!res.ok) return null;
-        const data = await res.json();
-        const logo = data?.teams?.[0]?.strTeamBadge || data?.teams?.[0]?.strTeamLogo || null;
+        await sleep(300); // Evitar rate limit del free tier
+        let logo = await fetchLogo(teamName);
+
+        // Fallback: nombre sin tildes (ej: "Atlético" → "Atletico")
+        if (!logo) {
+            const simplified = teamName.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            if (simplified !== teamName) {
+                await sleep(300);
+                logo = await fetchLogo(simplified);
+            }
+        }
+
         logoCache[teamName] = logo;
         return logo;
     } catch (e) {
