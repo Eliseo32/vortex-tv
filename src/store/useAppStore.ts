@@ -35,18 +35,16 @@ export interface FeaturedEvent {
   id: string;
   date: string;
   time: string;
-  sport: string;
-  sportIcon: string;
+  category: string;
   league: string;
   team1: string;
   team2: string;
   logo1: string | null;
   logo2: string | null;
-  channelName: string;
-  channelSlug: string;
-  videoUrl: string | null;
-  servers?: { name: string; url: string }[];
-  quality: string;
+  status: string;           // "⚪ PROGRAMADO" | "🔴 EN VIVO"
+  videoUrl: string | null;  // Primer servidor (para compatibilidad)
+  servers: string[];        // Todos los iframes como array de URLs
+  opciones: Record<string, string>; // "Opción 1" → URL
   createdAt: number;
 }
 

@@ -180,7 +180,7 @@ function AgendaMatchCard({ event, onPress }: { event: any; onPress: () => void }
     );
 }
 
-// ─── Sección de Agenda del Día ────────────────────────────────────────────────
+// ─── Sección de Agenda del Día ──────────────────────────────────────────────────
 function AgendaSection({ events }: { events: any[] }) {
     const navigation = useNavigation<any>();
 
@@ -188,23 +188,30 @@ function AgendaSection({ events }: { events: any[] }) {
 
     const today = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
     const todayCapitalized = today.charAt(0).toUpperCase() + today.slice(1);
+    const liveCount = events.filter(e => (e.status || '').includes('VIVO')).length;
 
     return (
         <View style={{ marginBottom: 36 }}>
-            {/* Cabecera de la sección */}
+            {/* Cabecera */}
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14, paddingLeft: 68, gap: 10 }}>
                 <Calendar color={SPORT_ACCENT} size={20} strokeWidth={2.5} />
-                <View>
-                    <Text style={{ color: '#fff', fontSize: 20, fontWeight: '900', letterSpacing: 0.2 }}>
-                        Agenda del Día
-                    </Text>
+                <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Text style={{ color: '#fff', fontSize: 20, fontWeight: '900', letterSpacing: 0.2 }}>Agenda del Día</Text>
+                        {liveCount > 0 && (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(239,68,68,0.15)', borderWidth: 1, borderColor: '#ef4444', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, gap: 4 }}>
+                                <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#ef4444' }} />
+                                <Text style={{ color: '#ef4444', fontSize: 9, fontWeight: '900', letterSpacing: 1 }}>{liveCount} EN VIVO</Text>
+                            </View>
+                        )}
+                    </View>
                     <Text style={{ color: '#6B7280', fontSize: 12, fontWeight: '600', marginTop: 1 }}>
                         {todayCapitalized} · {events.length} {events.length === 1 ? 'partido' : 'partidos'}
                     </Text>
                 </View>
             </View>
 
-            {/* Lista horizontal de tarjetas */}
+            {/* Lista horizontal */}
             <FlatList
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -216,17 +223,19 @@ function AgendaSection({ events }: { events: any[] }) {
                         event={item}
                         onPress={() => {
                             if (!item.videoUrl) return;
-                            // Construimos un item compatible con TvPlayerScreen
-                            navigation.navigate('PlayerTV', {
+                            navigation.navigate('SportsPlayerTV', {
                                 item: {
                                     id: item.id,
                                     title: `${item.team1} vs ${item.team2}`,
                                     type: 'tv',
                                     videoUrl: item.videoUrl,
-                                    servers: item.servers || [],
+                                    // servidores como array de objetos {name, url} para SportsPlayerTV
+                                    servers: Array.isArray(item.servers)
+                                        ? item.servers.map((url: string, i: number) => ({ name: `Servidor ${i + 1}`, url }))
+                                        : [],
                                     poster: item.logo1 || '',
                                     backdrop: item.logo1 || '',
-                                    description: `${item.league} · ${item.time} · ${item.channelName}`,
+                                    description: `${item.league} · ${item.time}`,
                                     genre: 'Deportes',
                                     year: 'LIVE',
                                     rating: '',
@@ -338,20 +347,7 @@ export default function TvSportsScreen() {
     return (
         <View style={{ flex: 1, backgroundColor: '#050505' }}>
 
-            {/* Fondo premium verde */}
-            <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'visible' }} pointerEvents="none">
-                <View style={{
-                    position: 'absolute', top: 0, left: 0, width: '100%',
-                    height: windowHeight * 0.4,
-                    backgroundColor: 'transparent',
-                    borderTopWidth: windowHeight * 0.4,
-                    borderColor: 'rgba(34,197,94,0.07)',
-                    borderLeftWidth: windowWidth,
-                    borderLeftColor: 'transparent',
-                    opacity: 0.9,
-                }} />
-                <View style={{ position: 'absolute', bottom: 0, width: '100%', height: '60%', backgroundColor: 'rgba(0,0,0,0.5)' }} />
-            </View>
+
 
             {/* Lista general */}
             <FlatList
