@@ -9,7 +9,6 @@
     "test": "node scrape-agenda.js"
   },
   "dependencies": {
-    "dotenv": "^17.3.1",
     "firebase-admin": "^13.0.0",
     "node-fetch": "^3.3.2"
   },

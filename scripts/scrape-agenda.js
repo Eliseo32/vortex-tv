@@ -7,25 +7,27 @@
 import fetch from 'node-fetch';
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import dotenv from 'dotenv';
+import { dirname } from 'path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: join(__dirname, '.env') });
 
 // ─── Firebase Admin Init ──────────────────────────────────────────────────────
+const rawJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+
+if (!rawJson) {
+    console.error('\n❌ FIREBASE_SERVICE_ACCOUNT_JSON no está definida en el entorno.');
+    console.error('ℹ️  En GitHub Actions: Settings → Secrets → Actions → New secret');
+    console.error('     Nombre: FIREBASE_SERVICE_ACCOUNT_JSON');
+    console.error('     Valor: el JSON completo de tu service account de Firebase\n');
+    process.exit(1);
+}
+
 let serviceAccount;
 try {
-    if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-        serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
-    } else {
-        const envContent = readFileSync(join(__dirname, '.env'), 'utf-8');
-        serviceAccount = JSON.parse(envContent);
-    }
+    serviceAccount = JSON.parse(rawJson);
 } catch (error) {
-    console.error('❌ Error leyendo credenciales de Firebase:', error.message);
+    console.error('❌ Error parseando FIREBASE_SERVICE_ACCOUNT_JSON (JSON inválido):', error.message);
     process.exit(1);
 }
 
