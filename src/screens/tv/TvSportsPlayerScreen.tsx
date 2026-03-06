@@ -19,6 +19,7 @@ import { Trophy, RefreshCw } from 'lucide-react-native';
 import { useKeepAwake } from 'expo-keep-awake';
 import TvExoPlayer from '../../components/tv/TvExoPlayer';
 import TvPlayerOverlay, { handleOverlayMessage, QualityLevel } from '../../components/tv/TvPlayerOverlay';
+import F1TelemetrySidePanel from '../../components/tv/F1TelemetrySidePanel';
 
 const SPORT_ACCENT = '#22c55e';
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
@@ -316,6 +317,7 @@ export default function TvSportsPlayerScreen() {
   const [overlayIsPaused, setOverlayIsPaused] = useState(false);
   const [overlayQualities, setOverlayQualities] = useState<QualityLevel[]>([]);
   const webViewRef = useRef<WebView>(null);
+  const [showF1Panel, setShowF1Panel] = useState(false);
 
   let currentUrl = interceptedM3u8 || urlList[currentIndex] || '';
   if (currentUrl && currentUrl.startsWith('//')) currentUrl = 'https:' + currentUrl;
@@ -382,32 +384,50 @@ export default function TvSportsPlayerScreen() {
 
   // ── WebView con intercepción m3u8 ──────────────────────────────────────
   return (
-    <View style={{ flex: 1, backgroundColor: '#000' }}>
-      <SportWebView
-        url={currentUrl}
-        title={title}
-        currentServerIndex={currentIndex}
-        serverCount={urlList.length}
-        isLocked={isLocked}
-        onM3u8Detected={(m3u8) => setInterceptedM3u8(m3u8)}
-        onNextServer={handleNextServer}
-      />
-      {/* Overlay de controles compartido */}
-      <TvPlayerOverlay
-        webViewRef={webViewRef as any}
-        mode="webview"
-        title={title}
-        accentColor="#22c55e"
-        currentTime={overlayCurrentTime}
-        duration={overlayDuration}
-        isPaused={overlayIsPaused}
-        qualityLevels={overlayQualities}
-        servers={serverOptions}
-        currentServerIndex={currentIndex}
-        showServerButton={urlList.length > 1}
-        onBack={() => navigation.goBack()}
-        onSelectServer={(i) => setCurrentIndex(i)}
-      />
+    <View style={{ flex: 1, backgroundColor: '#000', flexDirection: 'row' }}>
+      {/* ── VIDEO (65% o 100%) */}
+      <View style={{ flex: showF1Panel ? 0.65 : 1, backgroundColor: '#000' }}>
+        <SportWebView
+          url={currentUrl}
+          title={title}
+          currentServerIndex={currentIndex}
+          serverCount={urlList.length}
+          isLocked={isLocked}
+          onM3u8Detected={(m3u8) => setInterceptedM3u8(m3u8)}
+          onNextServer={handleNextServer}
+        />
+        {/* Overlay de controles compartido */}
+        <TvPlayerOverlay
+          webViewRef={webViewRef as any}
+          mode="webview"
+          title={title}
+          accentColor="#22c55e"
+          currentTime={overlayCurrentTime}
+          duration={overlayDuration}
+          isPaused={overlayIsPaused}
+          qualityLevels={overlayQualities}
+          servers={serverOptions}
+          currentServerIndex={currentIndex}
+          showServerButton={urlList.length > 1}
+          showF1Button={!showF1Panel}
+          onF1={() => setShowF1Panel(true)}
+          onBack={() => navigation.goBack()}
+          onSelectServer={(i) => setCurrentIndex(i)}
+        />
+      </View>
+
+      {/* ── F1 PANEL (35%) */}
+      {showF1Panel && (
+        <View style={{ flex: 0.35, backgroundColor: '#06080b' }}>
+          <F1TelemetrySidePanel
+            onClose={() => setShowF1Panel(false)}
+            onFullScreen={() => {
+              setShowF1Panel(false);
+              navigation.navigate('F1TelemetryTV');
+            }}
+          />
+        </View>
+      )}
     </View>
   );
 }

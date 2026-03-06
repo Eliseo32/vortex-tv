@@ -16,7 +16,7 @@ import {
 import { WebView } from 'react-native-webview';
 import {
     Play, Pause, SkipBack, SkipForward, Settings, X, Check,
-    ArrowLeft, Maximize2, Volume2, VolumeX, Server,
+    ArrowLeft, Maximize2, Volume2, VolumeX, Server, Zap,
 } from 'lucide-react-native';
 import TvFocusable from './TvFocusable';
 
@@ -85,6 +85,10 @@ interface TvPlayerOverlayProps {
     autoHideMs?: number;
     /** Mostrar botón de servidor */
     showServerButton?: boolean;
+    /** Mostrar botón F1 Telemetría */
+    showF1Button?: boolean;
+    /** Callback cuando se presiona el botón F1 */
+    onF1?: () => void;
 }
 
 // ─── Componente ────────────────────────────────────────────────────────────────
@@ -108,6 +112,8 @@ export default function TvPlayerOverlay({
     autoHideMs = 5000,
     forceShowTrigger = 0,
     showServerButton = false,
+    showF1Button = false,
+    onF1,
 }: TvPlayerOverlayProps) {
     // ─── State interno ─────────────────────────────────────────────────────
     const [showControls, setShowControls] = useState(true);
@@ -359,6 +365,17 @@ export default function TvPlayerOverlay({
                     <View style={styles.rightBtns}>
                         <CtrlBtn icon={isMuted ? VolumeX : Volume2} onPress={handleMute} />
                         <CtrlBtn icon={Settings} onPress={handleOpenQuality} />
+                        {showF1Button && (
+                            <TvFocusable
+                                onPress={() => { showAndResetTimer(); onF1?.(); }}
+                                onFocus={showAndResetTimer}
+                                scaleTo={1.15} borderWidth={0}
+                                style={[styles.ctrlBtn, { backgroundColor: 'rgba(225,6,0,0.15)', borderWidth: 1, borderColor: 'rgba(225,6,0,0.4)' }]}
+                                focusedStyle={[styles.ctrlBtnFocused, { borderColor: '#e10600', backgroundColor: 'rgba(225,6,0,0.3)' }]}
+                            >
+                                {(f: boolean) => <Zap color={f ? '#fff' : '#e10600'} size={22} fill={f ? '#fff' : '#e10600'} />}
+                            </TvFocusable>
+                        )}
                     </View>
                 </View>
             </Animated.View>

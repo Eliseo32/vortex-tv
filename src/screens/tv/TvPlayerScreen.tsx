@@ -7,6 +7,7 @@ import Video from 'react-native-video';
 import { Buffer } from 'buffer';
 import TvFocusable from '../../components/tv/TvFocusable';
 import TvPlayerOverlay, { handleOverlayMessage, QualityLevel } from '../../components/tv/TvPlayerOverlay';
+import F1TelemetrySidePanel from '../../components/tv/F1TelemetrySidePanel';
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
@@ -36,6 +37,8 @@ export default function TvPlayerScreen() {
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const controlsOpacity = useRef(new Animated.Value(1)).current;
   const [showOverlayTrigger, setShowOverlayTrigger] = useState(0);
+  // F1 PiP panel
+  const [showF1Panel, setShowF1Panel] = useState(false);
 
   // ── Quality State ─────────────────────────────────────────
   const [showQualityPicker, setShowQualityPicker] = useState(false);
@@ -561,70 +564,88 @@ true;
   // ── RENDER ────────────────────────────────────────────────────────────────
   // ══════════════════════════════════════════════════════════════════════════
   return (
-    <View style={{ flex: 1, backgroundColor: '#000' }}>
-      {/* Overlay compartido para Shaka/WebView */}
-      {(useShakaPlayer || (!isDash && !isDirectVideo)) && (
-        <TvPlayerOverlay
-          webViewRef={webViewRef}
-          mode={useShakaPlayer ? 'shaka' : 'webview'}
-          currentTime={currentTime}
-          duration={duration}
-          isPaused={isPaused}
-          qualityLevels={qualityLevels}
-          accentColor="#FACC15"
-          forceShowTrigger={showOverlayTrigger}
-          onBack={() => navigation.goBack()}
-        />
-      )}
+    <View style={{ flex: 1, backgroundColor: '#000', flexDirection: 'row' }}>
+      {/* ── VIDEO AREA (100% o 65% en modo PiP) ──────────────── */}
+      <View style={{ flex: showF1Panel ? 0.65 : 1, backgroundColor: '#000' }}>
+        {/* Overlay compartido para Shaka/WebView */}
+        {(useShakaPlayer || (!isDash && !isDirectVideo)) && (
+          <TvPlayerOverlay
+            webViewRef={webViewRef}
+            mode={useShakaPlayer ? 'shaka' : 'webview'}
+            currentTime={currentTime}
+            duration={duration}
+            isPaused={isPaused}
+            qualityLevels={qualityLevels}
+            accentColor="#FACC15"
+            forceShowTrigger={showOverlayTrigger}
+            showF1Button={!showF1Panel}
+            onF1={() => setShowF1Panel(true)}
+            onBack={() => navigation.goBack()}
+          />
+        )}
 
-      {isDash ? (
-        <View style={StyleSheet.absoluteFillObject}>
-          {!isVideoPlaying && (
-            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#050505', alignItems: 'center', justifyContent: 'center', zIndex: 40 }]}>
-              <ActivityIndicator size="large" color="#FACC15" />
-              <Text style={{ color: '#FACC15', fontWeight: '900', fontSize: 18, marginTop: 16, letterSpacing: 2, textTransform: 'uppercase' }}>Conectando DRM...</Text>
-            </View>
-          )}
-          <Video source={{ uri: finalUrl }} style={StyleSheet.absoluteFillObject} resizeMode="contain" controls={true} onLoad={() => setIsVideoPlaying(true)} />
-        </View>
-      ) : isDirectVideo ? (
-        <Video source={{ uri: cleanUrl }} style={StyleSheet.absoluteFillObject} resizeMode="contain" controls={true} />
-      ) : (
-        <View style={StyleSheet.absoluteFillObject}>
-          {isWaitScreenVisible && (
-            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#050505', alignItems: 'center', justifyContent: 'center', zIndex: 40 }]}>
-              <ActivityIndicator size="large" color="#FACC15" />
-              <Text style={{ color: '#FACC15', fontWeight: '900', fontSize: 18, marginTop: 16, letterSpacing: 2, textTransform: 'uppercase' }}>Conectando...</Text>
-              <Text style={{ color: '#6B7280', fontSize: 12, marginTop: 8, textAlign: 'center', maxWidth: '70%' }}>Bloqueando anuncios y ajustando el reproductor</Text>
-            </View>
-          )}
+        {isDash ? (
+          <View style={StyleSheet.absoluteFillObject}>
+            {!isVideoPlaying && (
+              <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#050505', alignItems: 'center', justifyContent: 'center', zIndex: 40 }]}>
+                <ActivityIndicator size="large" color="#FACC15" />
+                <Text style={{ color: '#FACC15', fontWeight: '900', fontSize: 18, marginTop: 16, letterSpacing: 2, textTransform: 'uppercase' }}>Conectando DRM...</Text>
+              </View>
+            )}
+            <Video source={{ uri: finalUrl }} style={StyleSheet.absoluteFillObject} resizeMode="contain" controls={true} onLoad={() => setIsVideoPlaying(true)} />
+          </View>
+        ) : isDirectVideo ? (
+          <Video source={{ uri: cleanUrl }} style={StyleSheet.absoluteFillObject} resizeMode="contain" controls={true} />
+        ) : (
+          <View style={StyleSheet.absoluteFillObject}>
+            {isWaitScreenVisible && (
+              <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#050505', alignItems: 'center', justifyContent: 'center', zIndex: 40 }]}>
+                <ActivityIndicator size="large" color="#FACC15" />
+                <Text style={{ color: '#FACC15', fontWeight: '900', fontSize: 18, marginTop: 16, letterSpacing: 2, textTransform: 'uppercase' }}>Conectando...</Text>
+                <Text style={{ color: '#6B7280', fontSize: 12, marginTop: 8, textAlign: 'center', maxWidth: '70%' }}>Bloqueando anuncios y ajustando el reproductor</Text>
+              </View>
+            )}
 
-          <WebView
-            ref={webViewRef}
-            userAgent={CHROME_UA}
-            source={useShakaPlayer
-              ? { html: getShakaHtml(), baseUrl: drmReferer || 'https://player.sensa.com.ar/' }
-              : { uri: cleanUrl, headers: { 'Referer': cleanUrl.split('/').slice(0, 3).join('/') + '/' } }
-            }
-            style={{ flex: 1, backgroundColor: '#000', opacity: isWaitScreenVisible ? 0 : 1 }}
-            allowsFullscreenVideo={true}
-            allowsInlineMediaPlayback={true}
-            mediaPlaybackRequiresUserAction={false}
-            allowsAirPlayForMediaPlayback={false}
-            domStorageEnabled={true}
-            javaScriptEnabled={true}
-            thirdPartyCookiesEnabled={true}
-            sharedCookiesEnabled={true}
-            androidLayerType="hardware"
-            mixedContentMode="always"
-            injectedJavaScriptBeforeContentLoaded={useShakaPlayer ? undefined : adBlockerJS}
-            injectedJavaScript={useShakaPlayer ? undefined : afterLoadJS}
-            injectedJavaScriptForMainFrameOnly={false}
-            onMessage={handleMessage}
-            originWhitelist={['*']}
-            setSupportMultipleWindows={false}
-            javaScriptCanOpenWindowsAutomatically={false}
-            onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
+            <WebView
+              ref={webViewRef}
+              userAgent={CHROME_UA}
+              source={useShakaPlayer
+                ? { html: getShakaHtml(), baseUrl: drmReferer || 'https://player.sensa.com.ar/' }
+                : { uri: cleanUrl, headers: { 'Referer': cleanUrl.split('/').slice(0, 3).join('/') + '/' } }
+              }
+              style={{ flex: 1, backgroundColor: '#000', opacity: isWaitScreenVisible ? 0 : 1 }}
+              allowsFullscreenVideo={true}
+              allowsInlineMediaPlayback={true}
+              mediaPlaybackRequiresUserAction={false}
+              allowsAirPlayForMediaPlayback={false}
+              domStorageEnabled={true}
+              javaScriptEnabled={true}
+              thirdPartyCookiesEnabled={true}
+              sharedCookiesEnabled={true}
+              androidLayerType="hardware"
+              mixedContentMode="always"
+              injectedJavaScriptBeforeContentLoaded={useShakaPlayer ? undefined : adBlockerJS}
+              injectedJavaScript={useShakaPlayer ? undefined : afterLoadJS}
+              injectedJavaScriptForMainFrameOnly={false}
+              onMessage={handleMessage}
+              originWhitelist={['*']}
+              setSupportMultipleWindows={false}
+              javaScriptCanOpenWindowsAutomatically={false}
+              onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
+            />
+          </View>
+        )}
+      </View>{/* fin video area */}
+
+      {/* ── F1 TELEMETRÍA PANEL (35%) ──────────────────────── */}
+      {showF1Panel && (
+        <View style={{ flex: 0.35, backgroundColor: '#06080b' }}>
+          <F1TelemetrySidePanel
+            onClose={() => setShowF1Panel(false)}
+            onFullScreen={() => {
+              setShowF1Panel(false);
+              navigation.navigate('F1TelemetryTV');
+            }}
           />
         </View>
       )}
