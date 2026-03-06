@@ -57,6 +57,19 @@ export interface HistoryItem {
   timestamp: number;
 }
 
+export interface ChannelOption {
+  name: string;
+  iframe: string;
+}
+
+export interface ChannelFolder {
+  id: string;
+  name: string;
+  logo: string | null;
+  options: ChannelOption[];
+  order: number;
+}
+
 interface AppState {
   myList: string[];
   watchedEpisodes: string[];
@@ -82,6 +95,7 @@ interface AppState {
 
   cloudContent: ContentItem[];
   featuredEvents: FeaturedEvent[];
+  channelFolders: ChannelFolder[];
   isLoadingContent: boolean;
   fetchCloudContent: () => Promise<void>;
 }
@@ -151,19 +165,28 @@ export const useAppStore = create<AppState>()(
       // CATÁLOGO
       cloudContent: [],
       featuredEvents: [],
+      channelFolders: [],
       isLoadingContent: false,
       fetchCloudContent: async () => {
         set({ isLoadingContent: true });
         try {
-          const contentQuery = await getDocs(collection(db, 'content'));
+          // Run all Firebase queries in parallel for faster loading
+          const [contentQuery, agendaQuery, foldersQuery] = await Promise.all([
+            getDocs(collection(db, 'content')),
+            getDocs(query(collection(db, 'agenda'), orderBy('createdAt', 'desc'))),
+            getDocs(query(collection(db, 'canales_carpetas'), orderBy('order', 'asc'))),
+          ]);
+
           const items: ContentItem[] = [];
           contentQuery.forEach((doc) => { items.push(doc.data() as ContentItem); });
 
-          const agendaQuery = await getDocs(query(collection(db, 'agenda'), orderBy('createdAt', 'desc')));
           const events: FeaturedEvent[] = [];
           agendaQuery.forEach((doc) => { events.push(doc.data() as FeaturedEvent); });
 
-          set({ cloudContent: items, featuredEvents: events, isLoadingContent: false });
+          const folders: ChannelFolder[] = [];
+          foldersQuery.forEach((doc) => { folders.push(doc.data() as ChannelFolder); });
+
+          set({ cloudContent: items, featuredEvents: events, channelFolders: folders, isLoadingContent: false });
         } catch (error) {
           console.error("Error al descargar catálogo:", error);
           set({ isLoadingContent: false });

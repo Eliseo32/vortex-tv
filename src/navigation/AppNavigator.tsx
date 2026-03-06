@@ -13,6 +13,8 @@ import TvPlayerScreen from '../screens/tv/TvPlayerScreen';
 // 🔥 IMPORTAMOS LAS NUEVAS PANTALLAS DE PARTY
 import TvPartySetupScreen from '../screens/tv/TvPartySetupScreen';
 import TvPartyPlayerScreen from '../screens/tv/TvPartyPlayerScreen';
+import TvSportsPlayerScreen from '../screens/tv/TvSportsPlayerScreen';
+import TvDrmPlayerScreen from '../screens/tv/TvDrmPlayerScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -53,10 +55,12 @@ export default function AppNavigator() {
           <Stack.Screen name="MainTV" component={TvHomeScreen} />
           <Stack.Screen name="DetailTV" component={TvDetailScreen} options={{ animation: 'fade' }} />
           <Stack.Screen name="PlayerTV" component={TvPlayerScreen} options={{ animation: 'fade' }} />
-          
+
           {/* 🔥 REGISTRAMOS LAS RUTAS FALTANTES AQUÍ */}
           <Stack.Screen name="PartySetup" component={TvPartySetupScreen} options={{ animation: 'fade' }} />
           <Stack.Screen name="PartyPlayerTV" component={TvPartyPlayerScreen} options={{ animation: 'fade' }} />
+          <Stack.Screen name="SportsPlayerTV" component={TvSportsPlayerScreen} options={{ animation: 'fade' }} />
+          <Stack.Screen name="DrmPlayerTV" component={TvDrmPlayerScreen} options={{ animation: 'fade' }} />
         </Stack.Group>
       )}
     </Stack.Navigator>

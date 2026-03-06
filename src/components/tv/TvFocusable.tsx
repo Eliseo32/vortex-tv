@@ -14,6 +14,8 @@ interface TvFocusableProps {
   nextFocusDown?: number;
   nextFocusLeft?: number;
   nextFocusRight?: number;
+  hasTVPreferredFocus?: boolean;
+  autoFocus?: boolean;
 }
 
 const AnimatedFocusContent = ({ focused, pressed, children, style, focusedStyle, scaleTo, borderWidth }: any) => {
@@ -78,9 +80,15 @@ const AnimatedFocusContent = ({ focused, pressed, children, style, focusedStyle,
   );
 };
 
-export default function TvFocusable({ children, onPress, style, focusedStyle, scaleTo = 1.08, borderWidth = 4, onFocus, onBlur, nextFocusUp, nextFocusDown, nextFocusLeft, nextFocusRight }: TvFocusableProps) {
+export default function TvFocusable({ children, onPress, style, focusedStyle, scaleTo = 1.08, borderWidth = 4, onFocus, onBlur, nextFocusUp, nextFocusDown, nextFocusLeft, nextFocusRight, hasTVPreferredFocus, autoFocus }: TvFocusableProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [isPressed, setIsPressed] = useState(false);
+
+  useEffect(() => {
+    if (autoFocus && hasTVPreferredFocus) {
+      // Auto-focus handled naturally by native engine setting nextFocuses or hasTVPreferredFocus
+    }
+  }, [autoFocus, hasTVPreferredFocus]);
 
   return (
     <Pressable
@@ -90,6 +98,7 @@ export default function TvFocusable({ children, onPress, style, focusedStyle, sc
         nextFocusDown,
         nextFocusLeft,
         nextFocusRight,
+        hasTVPreferredFocus,
       } as any)}
       onPress={onPress}
       onFocus={() => {

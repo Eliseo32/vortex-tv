@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { View, Text, FlatList, Image, Dimensions, Animated, StyleSheet, BackHandler } from 'react-native';
+import { View, Text, FlatList, Image, Dimensions, Animated, StyleSheet, BackHandler, Modal } from 'react-native';
 import { Play, Tv } from 'lucide-react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useAppStore } from '../../store/useAppStore';
@@ -22,37 +22,44 @@ const GENRE_LABEL: Record<string, string> = {
   Infantil: 'Infantil',
   Musica: 'Música',
   Peliculas: 'Películas & Cine',
+  Regional: 'Canales Regionales',
 };
 
 function getLabelForGenre(genre: string): string {
   return GENRE_LABEL[genre] || genre;
 }
 
-// ─── Vista agrupada para canales TV ─────────────────────────────────────────
-function TvChannelsGroupedView({ channels }: { channels: any[] }) {
+// ─── Vista Vertical "EPG Simulado" ──────────────────────────────────────────
+function TvChannelsVerticalGrid({ channels }: { channels: any[] }) {
   const navigation = useNavigation<any>();
+  const [activeTab, setActiveTab] = useState<string>('Todos');
+  const [selectedChannel, setSelectedChannel] = useState<any>(null);
+  const [showServerModal, setShowServerModal] = useState(false);
 
-  const groups = useMemo(() => {
-    const map: Record<string, any[]> = {};
-    channels.forEach((item) => {
-      const key = item.genre || 'Otros';
-      if (!map[key]) map[key] = [];
-      map[key].push(item);
+  // Extraer géneros únicos presentes en esta carga
+  const availableTabs = useMemo(() => {
+    const tabs = new Set<string>();
+    channels.forEach(ch => {
+      if (ch.genre) tabs.add(ch.genre);
     });
-
-    // Orden preferido
-    const preferredOrder = ['Nacional', 'Deportes', 'Noticias', 'Entretenimiento', 'Internacional', 'Musica', 'Peliculas', 'Infantil'];
-    const sorted = Object.keys(map).sort((a, b) => {
-      const ai = preferredOrder.indexOf(a);
-      const bi = preferredOrder.indexOf(b);
+    // Ordenar con Deportes y Películas de primeros
+    const preferred = ['Deportes', 'Peliculas', 'Nacional', 'Noticias', 'Entretenimiento'];
+    const sorted = Array.from(tabs).sort((a, b) => {
+      const ai = preferred.indexOf(a);
+      const bi = preferred.indexOf(b);
       if (ai === -1 && bi === -1) return a.localeCompare(b);
       if (ai === -1) return 1;
       if (bi === -1) return -1;
       return ai - bi;
     });
-
-    return sorted.map((key) => ({ genre: key, items: map[key] }));
+    return ['Todos', ...sorted];
   }, [channels]);
+
+  // Filtrar base
+  const displayedChannels = useMemo(() => {
+    if (activeTab === 'Todos') return channels;
+    return channels.filter(c => c.genre === activeTab);
+  }, [channels, activeTab]);
 
   if (channels.length === 0) {
     return (
@@ -64,106 +71,229 @@ function TvChannelsGroupedView({ channels }: { channels: any[] }) {
   }
 
   return (
-    <FlatList
-      data={groups}
-      keyExtractor={(_, idx) => idx.toString()}
-      showsVerticalScrollIndicator={false}
-      contentContainerStyle={{ paddingTop: 120, paddingBottom: 200 }}
-      ListHeaderComponent={
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, paddingLeft: 64, marginTop: 8 }}>
+    <View style={{ flex: 1, paddingTop: 100 }}>
+      {/* Header y Filtros (Tabs) */}
+      <View style={{ marginBottom: 16, paddingHorizontal: 64 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
           <Tv color="#FACC15" size={26} strokeWidth={2} />
           <Text style={{ color: '#fff', fontSize: 30, fontWeight: '900', letterSpacing: -0.5, marginLeft: 12 }}>
             TV en Vivo
           </Text>
         </View>
-      }
-      renderItem={({ item: group }) => (
-        <View style={{ marginBottom: 32 }}>
-          {/* Título del grupo */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, paddingLeft: 64 }}>
-            <View style={{ width: 4, height: 20, borderRadius: 2, backgroundColor: '#FACC15', marginRight: 10 }} />
-            <Text style={{ color: '#fff', fontSize: 20, fontWeight: '900', letterSpacing: 0.4 }}>
-              {getLabelForGenre(group.genre)}
-            </Text>
-            <Text style={{ color: '#6B7280', fontSize: 14, marginLeft: 10, fontWeight: '600' }}>
-              {group.items.length} canales
-            </Text>
-          </View>
 
-          {/* Lista horizontal */}
-          <FlatList
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            data={group.items}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={{ paddingHorizontal: 56, paddingBottom: 8 }}
-            renderItem={({ item }) => (
+        {/* Horizontal Tabs */}
+        <Animated.FlatList
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          data={availableTabs}
+          keyExtractor={(t) => t}
+          contentContainerStyle={{ paddingBottom: 10 }}
+          renderItem={({ item }) => {
+            const isActive = activeTab === item;
+            return (
               <TvFocusable
-                onPress={() => navigation.navigate('DetailTV', { item })}
+                onPress={() => setActiveTab(item)}
                 borderWidth={0}
-                scaleTo={1.08}
-                style={{ borderRadius: 12, marginRight: 14 }}
+                scaleTo={1.05}
+                style={{ borderRadius: 20, marginRight: 12 }}
                 focusedStyle={{ backgroundColor: 'transparent' }}
               >
                 {(focused: boolean) => (
                   <View style={{
-                    width: 180, borderRadius: 12, overflow: 'hidden',
+                    paddingHorizontal: 20, paddingVertical: 10,
+                    borderRadius: 20,
+                    backgroundColor: isActive ? '#fff' : (focused ? '#333' : '#1a1a1a'),
                     borderWidth: focused ? 2 : 1,
-                    borderColor: focused ? '#FACC15' : 'rgba(255,255,255,0.08)',
-                    backgroundColor: '#111',
+                    borderColor: focused ? '#FACC15' : 'transparent'
                   }}>
-                    {/* Imagen */}
-                    <View style={{ width: '100%', height: 110, backgroundColor: '#1a1a1a' }}>
-                      {item.poster ? (
-                        <Image
-                          source={{ uri: item.poster }}
-                          style={{ width: '100%', height: '100%' }}
-                          resizeMode="cover"
-                        />
-                      ) : (
-                        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                          <Tv color="#FACC15" size={34} strokeWidth={1.5} />
-                        </View>
-                      )}
-                      {focused && (
-                        <View style={{
-                          ...StyleSheet.absoluteFillObject,
-                          backgroundColor: 'rgba(0,0,0,0.4)',
-                          alignItems: 'center', justifyContent: 'center',
-                        }}>
-                          <Play color="#fff" size={28} fill="#fff" />
-                        </View>
-                      )}
-                    </View>
-                    {/* Info */}
-                    <View style={{ padding: 10 }}>
-                      <Text numberOfLines={1} style={{
-                        color: focused ? '#FACC15' : '#fff',
-                        fontSize: 13, fontWeight: '800', letterSpacing: 0.3,
-                      }}>
-                        {item.title}
-                      </Text>
-                      {item.genre ? (
-                        <Text numberOfLines={1} style={{ color: '#6B7280', fontSize: 11, marginTop: 2 }}>
-                          {getLabelForGenre(item.genre)}
-                        </Text>
-                      ) : null}
-                    </View>
+                    <Text style={{
+                      color: isActive ? '#000' : '#fff',
+                      fontWeight: '800', fontSize: 14
+                    }}>
+                      {item === 'Todos' ? 'Todos' : getLabelForGenre(item)}
+                    </Text>
                   </View>
                 )}
               </TvFocusable>
+            );
+          }}
+        />
+      </View>
+
+      {/* Grid Vertical Principal */}
+      <FlatList
+        data={displayedChannels}
+        keyExtractor={(item) => item.id}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: 64, paddingBottom: 200 }}
+        windowSize={5}
+        removeClippedSubviews={true}
+        initialNumToRender={8}
+        maxToRenderPerBatch={5}
+        getItemLayout={(_data, index) => ({ length: 88, offset: 88 * index, index })}
+        renderItem={({ item, index }) => (
+          <TvFocusable
+            onPress={() => {
+              // Ir directo al reproductor con la URL del canal
+              const url = item.videoUrl || '';
+              if (url) {
+                // Si el canal tiene DRM keys, usar reproductor nativo
+                const hasDrm = url.includes('drmKeyId=') && url.includes('drmKey=');
+                if (hasDrm) {
+                  navigation.navigate('DrmPlayerTV', { videoUrl: url });
+                } else {
+                  navigation.navigate('PlayerTV', { videoUrl: url });
+                }
+              }
+            }}
+            borderWidth={0}
+            scaleTo={1.02}
+            style={{ marginBottom: 8, borderRadius: 12 }}
+            focusedStyle={{ backgroundColor: 'transparent' }}
+          >
+            {(focused: boolean) => (
+              <View style={{
+                flexDirection: 'row',
+                height: 80,
+                borderRadius: 12,
+                backgroundColor: focused ? '#18181b' : '#0f0f12',
+                borderWidth: focused ? 2 : 1,
+                borderColor: focused ? '#FACC15' : 'rgba(255,255,255,0.05)',
+                overflow: 'hidden'
+              }}>
+                {/* Lado Izquierdo: Número y Logo */}
+                <View style={{
+                  width: '25%',
+                  backgroundColor: focused ? '#27272a' : '#141417',
+                  flexDirection: 'row', alignItems: 'center',
+                  paddingHorizontal: 16,
+                  borderRightWidth: 1, borderColor: 'rgba(255,255,255,0.05)'
+                }}>
+                  <Text style={{ color: '#52525b', fontSize: 18, fontWeight: '900', width: 40 }}>
+                    {index + 1}
+                  </Text>
+
+                  {item.poster && item.poster.trim().length > 0 ? (
+                    <Image
+                      source={{ uri: item.poster }}
+                      style={{ width: 60, height: 40, borderRadius: 6 }}
+                      resizeMode="contain"
+                    />
+                  ) : (
+                    <View style={{ width: 60, height: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: '#222', borderRadius: 6 }}>
+                      <Tv color="#FACC15" size={20} />
+                    </View>
+                  )}
+                  <View style={{ flex: 1, marginLeft: 16 }}>
+                    <Text numberOfLines={1} style={{ color: '#fff', fontSize: 15, fontWeight: '800' }}>
+                      {item.title}
+                    </Text>
+                    {item.genre && (
+                      <Text numberOfLines={1} style={{ color: '#71717a', fontSize: 11, fontWeight: '600' }}>
+                        {getLabelForGenre(item.genre)}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+
+                {/* Lado Derecho: Simulación EPG ("Ahora") */}
+                <View style={{ flex: 1, padding: 16, justifyContent: 'center' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#ef4444', marginRight: 8 }} />
+                    <Text style={{ color: '#ef4444', fontWeight: '800', fontSize: 12, letterSpacing: 0.5 }}>EN VIVO</Text>
+                  </View>
+                  <Text numberOfLines={1} style={{ color: focused ? '#FACC15' : '#e4e4e7', fontSize: 16, fontWeight: '800' }}>
+                    Transmisión en Directo
+                  </Text>
+                  <Text numberOfLines={1} style={{ color: '#a1a1aa', fontSize: 13, marginTop: 4 }}>
+                    Disfrutando de la grilla de {item.title}
+                  </Text>
+                </View>
+              </View>
             )}
-          />
+          </TvFocusable>
+        )}
+      />
+
+      {/* MODAL DE SERVIDORES (EPG) */}
+      <Modal visible={showServerModal} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{
+            width: 500, backgroundColor: '#0f0f12', borderRadius: 24, padding: 32,
+            borderWidth: 2, borderColor: 'rgba(255,255,255,0.05)', alignItems: 'center',
+            shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.8, shadowRadius: 20, elevation: 20
+          }}>
+            <Tv color="#FACC15" size={48} />
+            <Text style={{ color: '#fff', fontSize: 28, fontWeight: '900', marginTop: 16, marginBottom: 8, textAlign: 'center' }}>
+              {selectedChannel?.title || 'Canal en Vivo'}
+            </Text>
+            <Text style={{ color: '#a1a1aa', fontSize: 15, marginBottom: 32, textAlign: 'center' }}>
+              Selecciona el servidor o formato de transmisión deseado
+            </Text>
+
+            <FlatList
+              data={(selectedChannel?.servers || selectedChannel?.options || [{ name: 'Señal Default', url: selectedChannel?.videoUrl }])}
+              keyExtractor={(_, i) => i.toString()}
+              style={{ width: '100%', maxHeight: 300 }}
+              renderItem={({ item: srv, index }) => (
+                <TvFocusable
+                  onPress={() => {
+                    setShowServerModal(false);
+                    // Navega al reproductor inyectando el videoUrl seleccionado
+                    navigation.navigate('DetailTV', {
+                      item: { ...selectedChannel, videoUrl: srv.url || srv.iframe || srv }
+                    });
+                  }}
+                  scaleTo={1.05}
+                  style={{ marginBottom: 12, borderRadius: 12 }}
+                  focusedStyle={{ backgroundColor: 'transparent' }}
+                >
+                  {(focused) => (
+                    <View style={{
+                      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+                      backgroundColor: focused ? '#FACC15' : '#18181b',
+                      paddingVertical: 16, borderRadius: 12, borderWidth: 1,
+                      borderColor: focused ? '#FACC15' : 'rgba(255,255,255,0.1)'
+                    }}>
+                      <Play color={focused ? "#000" : "#FACC15"} size={20} fill={focused ? "#000" : "transparent"} />
+                      <Text style={{
+                        color: focused ? '#000' : '#fff', fontSize: 16, fontWeight: '800', marginLeft: 12, letterSpacing: 1
+                      }}>
+                        {srv.name || `Opción ${index + 1}`}
+                      </Text>
+                    </View>
+                  )}
+                </TvFocusable>
+              )}
+            />
+
+            <TvFocusable
+              onPress={() => setShowServerModal(false)}
+              scaleTo={1.05}
+              style={{ marginTop: 24, borderRadius: 12, width: '100%' }}
+              focusedStyle={{ backgroundColor: 'transparent' }}
+            >
+              {(f) => (
+                <View style={{
+                  backgroundColor: f ? '#ef4444' : 'transparent', borderWidth: 1, borderColor: f ? '#ef4444' : 'rgba(255,255,255,0.2)',
+                  paddingVertical: 16, borderRadius: 12, alignItems: 'center'
+                }}>
+                  <Text style={{ color: f ? '#fff' : '#a1a1aa', fontSize: 16, fontWeight: '700', letterSpacing: 1 }}>Cerrar</Text>
+                </View>
+              )}
+            </TvFocusable>
+          </View>
         </View>
-      )}
-    />
+      </Modal>
+
+    </View>
   );
 }
 
 // ─── Pantalla principal ──────────────────────────────────────────────────────
 export default function TvLiveScreen({ category = 'movie' }: TvLiveScreenProps) {
   const navigation = useNavigation<any>();
-  const { cloudContent } = useAppStore();
+  const { cloudContent, channelFolders } = useAppStore();
 
   const flatListRef = useRef<FlatList>(null);
   const scrollOffset = useRef(0);
@@ -172,11 +302,33 @@ export default function TvLiveScreen({ category = 'movie' }: TvLiveScreenProps) 
   const [carouselIndex, setCarouselIndex] = useState(0);
   const heroFadeAnim = useRef(new Animated.Value(1)).current;
 
-  // Todo el contenido de la categoría seleccionada
-  const filteredContent = useMemo(
-    () => cloudContent.filter((item) => item.type === category),
-    [cloudContent, category],
-  );
+  // Todo el contenido de la categoría seleccionada unida con las carpetas de canales M3U8
+  const filteredContent = useMemo(() => {
+    const baseContent = cloudContent.filter((item) => item.type === category);
+
+    if (category === 'tv') {
+      const dynamicFolderChannels: any[] = [];
+      channelFolders.forEach(folder => {
+        folder.options.forEach((opt: any, i: number) => {
+          dynamicFolderChannels.push({
+            id: `${folder.id}-opt-${i}`,
+            title: opt.name,
+            type: 'tv',
+            genre: folder.name,
+            poster: folder.logo || opt.logo || 'https://via.placeholder.com/300x169/222222/cccccc?text=TV',
+            backdrop: folder.logo || opt.logo || '',
+            videoUrl: opt.iframe,
+            description: `${folder.name} en directo`,
+            year: 'LIVE',
+            rating: ''
+          });
+        });
+      });
+      return [...baseContent, ...dynamicFolderChannels];
+    }
+
+    return baseContent;
+  }, [cloudContent, channelFolders, category]);
 
   const heroItems = useMemo(() => filteredContent.slice(0, 5), [filteredContent]);
 
@@ -220,7 +372,7 @@ export default function TvLiveScreen({ category = 'movie' }: TvLiveScreenProps) 
     return () => clearInterval(interval);
   }, [heroItems]);
 
-  // ─── Si es TV en Vivo → vista agrupada ──────────────────────────────────────
+  // ─── Si es TV en Vivo → vista "EPG Simulado Vertical" ─────────────────────
   if (category === 'tv') {
     return (
       <View style={{ flex: 1, backgroundColor: '#050505' }}>
@@ -235,7 +387,7 @@ export default function TvLiveScreen({ category = 'movie' }: TvLiveScreenProps) 
             opacity: 0.9,
           }} />
         </View>
-        <TvChannelsGroupedView channels={filteredContent} />
+        <TvChannelsVerticalGrid channels={filteredContent} />
       </View>
     );
   }

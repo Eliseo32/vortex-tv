@@ -15,12 +15,36 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { Trophy, RefreshCw, SkipForward } from 'lucide-react-native';
+import { Trophy, RefreshCw } from 'lucide-react-native';
 import { useKeepAwake } from 'expo-keep-awake';
 import TvExoPlayer from '../../components/tv/TvExoPlayer';
+import TvPlayerOverlay, { handleOverlayMessage, QualityLevel } from '../../components/tv/TvPlayerOverlay';
 
 const SPORT_ACCENT = '#22c55e';
-const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+// Dominios de AngulismoTV que son fuente válida (no hay que bloquear sus redirects)
+const ANGULISMO_DOMAINS = [
+  'angulismotv', 'angulismo-', 'streamtpcloud', 'streamtp10', 'la14hd',
+  'nebunexa', 'elcanaldeportivo', 'bolaloca', 'welivesports', 'bestleague',
+  'streamfree', 'pooembed', 'embedsports', 'viewembed', 'tucanaldeportivo',
+  'envivos', 'domainplayer', 'dominioparatodo', 'streamzs', 'envivoslatam',
+  'futbol.to', 'goluchitas', 'deporte-libre', 'reeeyano', 'rereyano',
+];
+
+function getDomainReferer(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.protocol}//${u.host}/`;
+  } catch {
+    return 'https://angulismotv-dnh.pages.dev/';
+  }
+}
+
+function isAngulismoDomain(url: string): boolean {
+  const lower = url.toLowerCase();
+  return ANGULISMO_DOMAINS.some(d => lower.includes(d));
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function isDirectStream(url: string): boolean {
@@ -63,19 +87,16 @@ function SportWebView({ url, onM3u8Detected, onNextServer, currentServerIndex, s
     const reqUrl: string = request.url || '';
     const lower = reqUrl.toLowerCase();
 
-    // ✅ Intercepción: si el WebView quiere navegar a un m3u8 → ExoPlayer
-    if (lower.includes('.m3u8') || lower.includes('.m3u')) {
-      console.log('[SportsPlayer] M3U8 interceptado → ExoPlayer:', reqUrl);
-      onM3u8Detected(reqUrl);
-      return false; // Bloquear navegación en WebView
-    }
-
-    // Bloquear ads y redirects
-    if (lower.includes('adcash') || lower.includes('popads') || lower.includes('vimeus')) return false;
+    // Bloquear ads conocidos
+    const AD_DOMAINS = ['adcash', 'popads', 'vimeus', 'doubleclick', 'googlesyndication', 'exoclick', 'trafficjunky', 'propellerads'];
+    if (AD_DOMAINS.some(d => lower.includes(d))) return false;
     if (reqUrl.startsWith('intent://') || reqUrl.startsWith('market://')) return false;
 
-    // Bloquear redirects de top-frame fuera del dominio original
+    // Bloquear redirects top-frame SOLO a dominios ajenos
     if (isLocked && request.isTopFrame) {
+      // Permitir dominios de AngulismoTV siempre
+      if (isAngulismoDomain(reqUrl)) return true;
+      // Permitir el dominio original
       const originalDomain = url.split('/')[2];
       if (originalDomain && !lower.includes(originalDomain) && !lower.includes('about:blank')) {
         return false;
@@ -86,11 +107,26 @@ function SportWebView({ url, onM3u8Detected, onNextServer, currentServerIndex, s
 
   const injectedJS = `
         (function() {
+            // === Ajuste visual ===
             document.body.style.backgroundColor = '#000';
+            document.body.style.margin = '0';
+            document.body.style.padding = '0';
             document.body.style.overflow = 'hidden';
+            
+            // === Bloquear popups ===
             window.open = function() { return null; };
             window.alert = function() { return null; };
             window.confirm = function() { return null; };
+
+            // === Shaka Player: forzar unmute si está presente ===
+            const tryShaka = () => {
+                if (window.player && typeof window.player.getVolume === 'function') {
+                    try { window.player.setVolume(1); window.player.configure({streaming: {}}); } catch(e) {}
+                }
+                // Shaka UI
+                const shakaBtn = document.querySelector('.shaka-mute-button, .shaka-overflow-menu-button');
+                if (shakaBtn) try { shakaBtn.click(); } catch(e) {}
+            };
 
             let notified = false;
             const notify = (el) => {
@@ -106,8 +142,54 @@ function SportWebView({ url, onM3u8Detected, onNextServer, currentServerIndex, s
             };
 
             let attempts = 0;
+            
+            const attemptUnmute = () => {
+                // Botones de unmute de reproductores conocidos
+                const unmuteSelectors = [
+                    '.clappr-unmute', '.vjs-mute-control', '.jw-icon-vol-off', 
+                    '[aria-label="Unmute"]', '[aria-label="Desactivar silencio"]',
+                    '[aria-label="Quitar silencio"]', '.mute-button', '.volume-control',
+                    '.plyr__control[data-plyr="mute"]', '.dplayer-volume-icon',
+                    '.shaka-mute-button', 'button.unmute', '.sound-button',
+                    '.jw-icon-volume', '.fp-mute', '[class*="unmute"]',
+                ];
+                
+                // API de reproductores
+                if (window.player && typeof window.player.setVolume === 'function') {
+                    try { window.player.setVolume(100); } catch(e) {}
+                    try { if (window.player.configure) window.player.configure({ mute: false }); } catch(e) {}
+                }
+                // JW Player
+                if (window.jwplayer && typeof window.jwplayer === 'function') {
+                    try { window.jwplayer().setMute(false); window.jwplayer().setVolume(90); } catch(e) {}
+                }
+                // Flowplayer
+                if (window.flowplayer && window.flowplayer.instances) {
+                    try { window.flowplayer.instances.forEach(p => p.unmute()); } catch(e) {}
+                }
+                
+                unmuteSelectors.forEach(sel => {
+                    const btn = document.querySelector(sel);
+                    if (btn && window.getComputedStyle(btn).display !== 'none') {
+                        try { btn.click(); } catch(e) {}
+                    }
+                });
+                
+                // Overlays con texto
+                document.querySelectorAll('div, span, button').forEach(el => {
+                    const text = ((el).innerText || '').toLowerCase();
+                    if (text === 'unmute' || text === 'haz clic para activar el sonido' ||
+                        text.includes('tap to unmute') || text.includes('click to unmute') ||
+                        text.includes('clic para') || text.includes('sonido')) {
+                        try { el.click(); } catch(e) {}
+                    }
+                });
+
+                tryShaka();
+            };
+
             const tick = setInterval(() => {
-                if (notified || ++attempts > 60) { clearInterval(tick); return; }
+                if (notified || ++attempts > 80) { clearInterval(tick); return; }
                 const v = document.querySelector('video');
                 const f = document.querySelector('iframe');
                 if (v) {
@@ -115,6 +197,8 @@ function SportWebView({ url, onM3u8Detected, onNextServer, currentServerIndex, s
                         v.setAttribute('data-hooked', '1');
                         v.addEventListener('playing', () => notify(v));
                         v.addEventListener('timeupdate', () => { if (v.currentTime > 0.1) notify(v); });
+                        // Forzar play si está pausado
+                        try { if (v.paused) { v.muted = false; v.volume = 1; v.play(); } } catch(e) {}
                     }
                     if (!v.paused && v.currentTime > 0.1) notify(v);
                 }
@@ -124,14 +208,18 @@ function SportWebView({ url, onM3u8Detected, onNextServer, currentServerIndex, s
                     f.style.zIndex = '999999'; f.style.border = 'none';
                     if (attempts > 5) notify(null);
                 }
-                // Auto-click para arrancar reproductores
-                if (attempts % 3 === 0) {
+                
+                attemptUnmute();
+
+                // Auto-click para activar reproductores que requieren interacción
+                if (attempts % 4 === 0 && !notified) {
                     const cx = window.innerWidth / 2, cy = window.innerHeight / 2;
-                    document.elementFromPoint(cx, cy)?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: cx, clientY: cy }));
+                    const el = document.elementFromPoint(cx, cy);
+                    if (el) el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: cx, clientY: cy }));
                 }
             }, 800);
 
-            // Bloquear Enter en TV para evitar clicks en ads
+            // Enter en TV = play/pause en el video
             window.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' || e.keyCode === 13 || e.keyCode === 66) {
                     e.preventDefault(); e.stopImmediatePropagation();
@@ -167,7 +255,15 @@ function SportWebView({ url, onM3u8Detected, onNextServer, currentServerIndex, s
       )}
       <WebView
         key={`wv-${currentServerIndex}`}
-        source={{ uri: url }}
+        source={{
+          uri: url,
+          headers: {
+            // Referrer dinámico: usa el dominio de la URL del iframe para evitar bloqueos
+            'Referer': getDomainReferer(url),
+            'Origin': getDomainReferer(url).replace(/\/$/, ''),
+            'X-Requested-With': '',
+          }
+        }}
         style={{ flex: 1, opacity: isWaiting ? 0 : 1, backgroundColor: '#000' }}
         userAgent={CHROME_UA}
         allowsFullscreenVideo
@@ -175,6 +271,8 @@ function SportWebView({ url, onM3u8Detected, onNextServer, currentServerIndex, s
         mediaPlaybackRequiresUserAction={false}
         domStorageEnabled
         javaScriptEnabled
+        thirdPartyCookiesEnabled={true}
+        sharedCookiesEnabled={true}
         androidLayerType="hardware"
         mixedContentMode="always"
         injectedJavaScript={injectedJS}
@@ -212,7 +310,17 @@ export default function TvSportsPlayerScreen() {
   const [interceptedM3u8, setInterceptedM3u8] = useState<string | null>(null);
   const [isLocked, setIsLocked] = useState(false);
 
-  const currentUrl = interceptedM3u8 || urlList[currentIndex] || '';
+  // ─── Overlay state (shared controls) ───────────────────────────────────
+  const [overlayCurrentTime, setOverlayCurrentTime] = useState(0);
+  const [overlayDuration, setOverlayDuration] = useState(0);
+  const [overlayIsPaused, setOverlayIsPaused] = useState(false);
+  const [overlayQualities, setOverlayQualities] = useState<QualityLevel[]>([]);
+  const webViewRef = useRef<WebView>(null);
+
+  let currentUrl = interceptedM3u8 || urlList[currentIndex] || '';
+  if (currentUrl && currentUrl.startsWith('//')) currentUrl = 'https:' + currentUrl;
+  else if (currentUrl && !currentUrl.startsWith('http')) currentUrl = 'https://' + currentUrl;
+
   const useExo = isDirectStream(currentUrl);
 
   useEffect(() => {
@@ -269,17 +377,38 @@ export default function TvSportsPlayerScreen() {
     );
   }
 
+  // ─── Servidores para el overlay ──────────────────────────────────────
+  const serverOptions = urlList.map((url, i) => ({ name: `Servidor ${i + 1}`, url }));
+
   // ── WebView con intercepción m3u8 ──────────────────────────────────────
   return (
-    <SportWebView
-      url={currentUrl}
-      title={title}
-      currentServerIndex={currentIndex}
-      serverCount={urlList.length}
-      isLocked={isLocked}
-      onM3u8Detected={(m3u8) => setInterceptedM3u8(m3u8)}
-      onNextServer={handleNextServer}
-    />
+    <View style={{ flex: 1, backgroundColor: '#000' }}>
+      <SportWebView
+        url={currentUrl}
+        title={title}
+        currentServerIndex={currentIndex}
+        serverCount={urlList.length}
+        isLocked={isLocked}
+        onM3u8Detected={(m3u8) => setInterceptedM3u8(m3u8)}
+        onNextServer={handleNextServer}
+      />
+      {/* Overlay de controles compartido */}
+      <TvPlayerOverlay
+        webViewRef={webViewRef as any}
+        mode="webview"
+        title={title}
+        accentColor="#22c55e"
+        currentTime={overlayCurrentTime}
+        duration={overlayDuration}
+        isPaused={overlayIsPaused}
+        qualityLevels={overlayQualities}
+        servers={serverOptions}
+        currentServerIndex={currentIndex}
+        showServerButton={urlList.length > 1}
+        onBack={() => navigation.goBack()}
+        onSelectServer={(i) => setCurrentIndex(i)}
+      />
+    </View>
   );
 }
 

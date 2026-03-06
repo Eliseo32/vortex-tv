@@ -3,29 +3,65 @@ import { View, Text, FlatList, ActivityIndicator, StyleSheet, BackHandler } from
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { WebView } from 'react-native-webview';
 import { ShieldCheck, Users } from 'lucide-react-native';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { useAppStore } from '../../store/useAppStore';
 import { Video, ResizeMode } from 'expo-av';
+
+const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 export default function TvPartyPlayerScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const webViewRef = useRef<WebView>(null);
   const flatListRef = useRef<FlatList>(null);
+  const videoRef = useRef<Video>(null);
 
-  const { videoUrl, roomCode } = route.params;
+  const { videoUrl, roomCode, isHost } = route.params;
   const currentProfile = useAppStore(state => state.currentProfile);
 
   const [messages, setMessages] = useState<any[]>([]);
+  const [partyState, setPartyState] = useState<any>(null);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
+  const lastSyncTime = useRef(0);
 
-  const cleanUrl = videoUrl ? videoUrl.trim() : '';
-  const isDirect = cleanUrl.toLowerCase().includes('.mp4') || cleanUrl.toLowerCase().includes('.m3u8');
+  let cleanUrl = videoUrl ? videoUrl.trim() : '';
+  if (cleanUrl && cleanUrl.startsWith('//')) cleanUrl = 'https:' + cleanUrl;
+  else if (cleanUrl && !cleanUrl.startsWith('http')) cleanUrl = 'https://' + cleanUrl;
 
-  const isLamovie = cleanUrl.toLowerCase().includes('lamovie') || cleanUrl.toLowerCase().includes('lamov');
+  const urlToPlay = (!isHost && partyState?.videoUrl) ? partyState.videoUrl : cleanUrl;
+  const isDirect = urlToPlay.toLowerCase().includes('.mp4') || urlToPlay.toLowerCase().includes('.m3u8');
+  const isLamovie = urlToPlay.toLowerCase().includes('lamovie') || urlToPlay.toLowerCase().includes('lamov');
   const timeoutDuration = isLamovie ? 35000 : 10000;
+
+  useEffect(() => {
+    if (!roomCode) return;
+    if (isHost) {
+      setDoc(doc(db, 'parties', roomCode), {
+        state: { isPlaying: true, currentTime: 0, videoUrl: cleanUrl }
+      }, { merge: true });
+    } else {
+      const unsubscribeState = onSnapshot(doc(db, 'parties', roomCode), (docSnap) => {
+        if (docSnap.exists() && docSnap.data().state) {
+          setPartyState(docSnap.data().state);
+        }
+      });
+      return () => unsubscribeState();
+    }
+  }, [roomCode, isHost]);
+
+  const updatePlaybackState = (playing: boolean, time: number) => {
+    if (!isHost || !roomCode) return;
+    const now = Date.now();
+    if (now - lastSyncTime.current > 1000) {
+      updateDoc(doc(db, 'parties', roomCode), {
+        'state.isPlaying': playing,
+        'state.currentTime': time
+      }).catch(() => { });
+      lastSyncTime.current = now;
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -94,6 +130,23 @@ export default function TvPartyPlayerScreen() {
       let attempts = 0;
       let fastInterval;
 
+      const isHost = ${isHost ? 'true' : 'false'};
+
+      const applyHostListeners = (v) => {
+          if (!isHost || v.dataset.hostAttached) return;
+          v.dataset.hostAttached = 'true';
+          v.addEventListener('play', function() { window.ReactNativeWebView.postMessage('syncState:true,' + v.currentTime); });
+          v.addEventListener('pause', function() { window.ReactNativeWebView.postMessage('syncState:false,' + v.currentTime); });
+          v.addEventListener('seeked', function() { window.ReactNativeWebView.postMessage('syncState:' + (!v.paused) + ',' + v.currentTime); });
+          let lastTimeSync = 0;
+          v.addEventListener('timeupdate', function() {
+              if (Date.now() - lastTimeSync > 1000) {
+                 window.ReactNativeWebView.postMessage('syncState:' + (!v.paused) + ',' + v.currentTime); 
+                 lastTimeSync = Date.now();
+              }
+          });
+      };
+
       window.addEventListener('message', function(e) {
         if (e.data === 'APAGAR_ESCANER') clearInterval(fastInterval);
         if (e.data === 'video_playing_relay') {
@@ -145,6 +198,39 @@ export default function TvPartyPlayerScreen() {
         '.vp-video-wrapper', '.vp-telecine', '#player-preload', '.play-button', 
         '.button-play', '.vjs-tech'
       ];
+      
+      const attemptUnmute = () => {
+          const unmuteSelectors = [
+              '.clappr-unmute', '.vjs-mute-control', '.jw-icon-vol-off', 
+              '[aria-label="Unmute"]', '[aria-label="Desactivar silencio"]', 
+              '.mute-button', '.volume-control', '.plyr__control[data-plyr="mute"]',
+              '.dplayer-volume-icon', 'button.unmute', '.sound-button'
+          ];
+          
+          if (window.player && typeof window.player.setVolume === 'function') {
+              try {
+                  window.player.setVolume(100);
+                  if (typeof window.player.configure === 'function') {
+                      window.player.configure({mute: false});
+                  }
+              } catch(e) {}
+          }
+          
+          unmuteSelectors.forEach(sel => {
+              const btn = document.querySelector(sel);
+              if (btn && window.getComputedStyle(btn).display !== 'none') {
+                  try { btn.click(); } catch(e) {}
+              }
+          });
+          
+          const overlays = document.querySelectorAll('div, span, button');
+          overlays.forEach(el => {
+              const text = (el.innerText || '').toLowerCase();
+              if (text.includes('unmute') || text === 'haz clic para activar el sonido' || text.includes('tap to unmute') || text.includes('click to')) {
+                  try { el.click(); } catch(e) {}
+              }
+          });
+      };
 
       function cleanOverlays() {
         const elements = document.querySelectorAll('div, a, button, span');
@@ -217,6 +303,7 @@ export default function TvPartyPlayerScreen() {
               if (video.currentTime > 0.1) triggerPlaybackFound(video);
             });
             if (video.readyState >= 3) triggerPlaybackFound(video);
+            applyHostListeners(video);
           }
 
           if (video.paused && attempts > 1) {
@@ -238,6 +325,8 @@ export default function TvPartyPlayerScreen() {
             }
           });
         }
+        
+        attemptUnmute();
         attempts++;
       };
 
@@ -270,8 +359,32 @@ export default function TvPartyPlayerScreen() {
   `;
 
   const handleMessage = (event: any) => {
-    if (event.nativeEvent.data === 'video_playing') setIsVideoPlaying(true);
+    const data = event.nativeEvent.data;
+    if (data === 'video_playing') {
+      setIsVideoPlaying(true);
+    } else if (data.startsWith('syncState:')) {
+      const parts = data.replace('syncState:', '').split(',');
+      const playing = parts[0] === 'true';
+      const time = parseFloat(parts[1]);
+      updatePlaybackState(playing, time);
+    }
   };
+
+  useEffect(() => {
+    if (!isHost && partyState && webViewRef.current && isVideoPlaying) {
+      const jsCmd = `
+          var v = document.querySelector('video');
+          if(v) {
+              if(${partyState.isPlaying} && v.paused) v.play();
+              else if(!${partyState.isPlaying} && !v.paused) v.pause();
+              
+              var diff = Math.abs(v.currentTime - ${partyState.currentTime});
+              if(diff > 3.0) v.currentTime = ${partyState.currentTime};
+          }
+       `;
+      webViewRef.current.injectJavaScript(jsCmd);
+    }
+  }, [partyState, isHost, isVideoPlaying]);
 
   const handleShouldStartLoadWithRequest = (request: any) => {
     const url = request.url.toLowerCase();
@@ -294,7 +407,27 @@ export default function TvPartyPlayerScreen() {
       {/* SECCIÓN DEL REPRODUCTOR (Ocupa el 75%) */}
       <View style={{ flex: 0.75 }} className="bg-black relative">
         {isDirect ? (
-          <Video source={{ uri: cleanUrl }} style={StyleSheet.absoluteFillObject} useNativeControls={true} resizeMode={ResizeMode.CONTAIN} shouldPlay={true} />
+          <Video
+            ref={videoRef}
+            source={{ uri: cleanUrl }}
+            style={StyleSheet.absoluteFillObject}
+            useNativeControls={true}
+            resizeMode={ResizeMode.CONTAIN}
+            shouldPlay={isHost ? true : false}
+            onPlaybackStatusUpdate={(status: any) => {
+              if (!status.isLoaded) return;
+              if (isHost && roomCode) {
+                updatePlaybackState(status.isPlaying, status.positionMillis / 1000);
+              } else if (!isHost && partyState && videoRef.current) {
+                if (partyState.isPlaying !== status.isPlaying) {
+                  if (partyState.isPlaying) videoRef.current.playAsync();
+                  else videoRef.current.pauseAsync();
+                }
+                const diff = Math.abs((status.positionMillis / 1000) - partyState.currentTime);
+                if (diff > 3.0) videoRef.current.setPositionAsync(partyState.currentTime * 1000);
+              }
+            }}
+          />
         ) : (
           <View style={StyleSheet.absoluteFillObject} className="bg-black">
             {isWaitScreenVisible && (
@@ -308,7 +441,12 @@ export default function TvPartyPlayerScreen() {
 
             <WebView
               ref={webViewRef}
-              source={{ uri: cleanUrl }}
+              source={{
+                uri: cleanUrl,
+                headers: {
+                  'Referer': cleanUrl.split('/').slice(0, 3).join('/') + '/'
+                }
+              }}
               style={{ flex: 1, backgroundColor: 'black', opacity: isWaitScreenVisible ? 0 : 1 }}
               allowsFullscreenVideo={true}
               allowsInlineMediaPlayback={true}
@@ -316,6 +454,8 @@ export default function TvPartyPlayerScreen() {
               allowsAirPlayForMediaPlayback={false}
               domStorageEnabled={true}
               javaScriptEnabled={true}
+              thirdPartyCookiesEnabled={true}
+              sharedCookiesEnabled={true}
               androidLayerType="hardware"
               mixedContentMode="always"
               injectedJavaScriptBeforeContentLoaded={beforeLoadJS}
@@ -343,9 +483,9 @@ export default function TvPartyPlayerScreen() {
           onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
           ListEmptyComponent={<Text className="text-gray-500 text-center mt-10">La sala está vacía. Invita a tus amigos.</Text>}
           renderItem={({ item }) => (
-            <View className={`mb-4 ${item.isMe ? 'self-end' : 'self-start'}`}>
-              <Text className={`text-[10px] mb-1 font-bold ${item.isMe ? 'hidden' : 'text-purple-400'}`}>{item.user}</Text>
-              <View className={`px-4 py-3 rounded-2xl max-w-[90%] ${item.isMe ? 'bg-purple-600 rounded-tr-sm' : 'bg-gray-800 rounded-tl-sm'}`}>
+            <View className={`mb - 4 ${item.isMe ? 'self-end' : 'self-start'} `}>
+              <Text className={`text - [10px] mb - 1 font - bold ${item.isMe ? 'hidden' : 'text-purple-400'} `}>{item.user}</Text>
+              <View className={`px - 4 py - 3 rounded - 2xl max - w - [90 %] ${item.isMe ? 'bg-purple-600 rounded-tr-sm' : 'bg-gray-800 rounded-tl-sm'} `}>
                 <Text className="text-white text-sm font-medium">{item.text}</Text>
               </View>
             </View>

@@ -1,7 +1,8 @@
 {
   "expo": {
-    "name": "Vortex TV",
-    "slug": "vortex-tv",
+    "name": "SHAGOO!",
+    "slug": "shagoo",
+    "owner": "safft",
     "version": "1.0.0",
     "orientation": "landscape",
     "icon": "./assets/tv-banner.png",
@@ -33,14 +34,15 @@
           ]
         }
       ],
-      "package": "com.leonel322.vortextv"
+      "package": "com.safft.shagoo",
+      "permissions": []
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "extra": {
       "eas": {
-        "projectId": "eb06e01a-b796-40f5-920a-d2436389997f"
+        "projectId": "729642bd-e9d3-4b2b-a6be-536013171067"
       }
     }
   }

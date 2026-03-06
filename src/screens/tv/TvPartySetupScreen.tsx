@@ -10,20 +10,20 @@ export default function TvPartySetupScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { item, title, backdrop, selectedVideoUrl } = route.params;
-  
-  const videoUrlToUse = selectedVideoUrl || item?.videoUrl; 
+
+  const videoUrlToUse = selectedVideoUrl || item?.videoUrl;
   const [joinCode, setJoinCode] = useState('');
   const [generatedCode] = useState(() => "VRTX-" + Math.floor(1000 + Math.random() * 9000));
   const [inputFocused, setInputFocused] = useState(false);
 
   const createParty = () => {
     if (!videoUrlToUse) return;
-    navigation.navigate('PartyPlayerTV', { videoUrl: videoUrlToUse, title: title || 'Vortex Party', roomCode: generatedCode });
+    navigation.navigate('PartyPlayerTV', { videoUrl: videoUrlToUse, title: title || 'Vortex Party', roomCode: generatedCode, isHost: true });
   };
 
   const joinParty = () => {
     if (!videoUrlToUse || joinCode.length < 4) return;
-    navigation.navigate('PartyPlayerTV', { videoUrl: videoUrlToUse, title: title || 'Vortex Party', roomCode: joinCode.toUpperCase() });
+    navigation.navigate('PartyPlayerTV', { videoUrl: videoUrlToUse, title: title || 'Vortex Party', roomCode: joinCode.toUpperCase(), isHost: false });
   };
 
   return (
@@ -35,7 +35,7 @@ export default function TvPartySetupScreen() {
       </View>
 
       <View className="flex-1 items-center justify-center px-24">
-        
+
         {/* ENCABEZADO */}
         <View className="items-center mb-12">
           <View className="w-24 h-24 bg-purple-600/20 rounded-full items-center justify-center mb-6 border border-purple-500/30 shadow-lg shadow-purple-500/20">
@@ -48,7 +48,7 @@ export default function TvPartySetupScreen() {
         </View>
 
         <View className="flex-row w-full max-w-6xl justify-between">
-          
+
           {/* LADO IZQUIERDO: ANFITRIÓN */}
           <View className="flex-1 bg-white/5 border border-white/10 p-12 rounded-[32px] mr-8 shadow-2xl shadow-black">
             <View className="flex-row items-center mb-8">
@@ -93,15 +93,13 @@ export default function TvPartySetupScreen() {
               {(focused) => {
                 const canJoin = joinCode.length >= 4;
                 return (
-                  <View className={`py-6 rounded-xl flex-row justify-center items-center ${
-                    focused && canJoin ? 'bg-vortex-yellow' : 
-                    focused ? 'bg-white/20' : 
-                    canJoin ? 'bg-[#222]' : 'bg-black/40'
-                  }`}>
-                    <Text className={`font-black text-2xl tracking-widest uppercase ${
-                      focused && canJoin ? 'text-black' : 
-                      canJoin ? 'text-vortex-yellow' : 'text-gray-600'
-                    }`}>Conectar</Text>
+                  <View className={`py-6 rounded-xl flex-row justify-center items-center ${focused && canJoin ? 'bg-vortex-yellow' :
+                      focused ? 'bg-white/20' :
+                        canJoin ? 'bg-[#222]' : 'bg-black/40'
+                    }`}>
+                    <Text className={`font-black text-2xl tracking-widest uppercase ${focused && canJoin ? 'text-black' :
+                        canJoin ? 'text-vortex-yellow' : 'text-gray-600'
+                      }`}>Conectar</Text>
                   </View>
                 );
               }}
