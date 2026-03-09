@@ -1,19 +1,20 @@
 /**
  * F1TelemetrySidePanel — Panel lateral de telemetría F1
- * Se muestra al lado del reproductor de video (modo PiP/split-screen)
+ * Se muestra al lado del reproductor de video (modo split-screen)
  * 35% del ancho de pantalla, 100% alto
+ *
+ * Usa el hook useF1Telemetry del contexto F1BridgeProvider.
+ * Si no hay provider, muestra placeholder.
  */
 
 import React, { useState } from 'react';
 import {
-    View, Text, StyleSheet, ScrollView, TouchableOpacity,
-    useWindowDimensions,
+    View, Text, StyleSheet, ScrollView,
 } from 'react-native';
 import Svg, { Polyline, Circle, Text as SvgText } from 'react-native-svg';
-import { useNavigation } from '@react-navigation/native';
-import { useF1Telemetry, F1Driver, TIRE_COLORS } from '../../hooks/useF1Telemetry';
+import { useF1Telemetry, F1BridgeProvider, getTeamColor, TIRE_COLORS, F1Driver } from '../../hooks/useF1Telemetry';
 import TvFocusable from './TvFocusable';
-import { Maximize2, X, Wifi, WifiOff, Map } from 'lucide-react-native';
+import { Maximize2, X, WifiOff, Map } from 'lucide-react-native';
 
 // ─── Tokens ──────────────────────────────────────────────────────────────────
 const BG = '#06080b';
@@ -81,7 +82,7 @@ const MiniMap = ({
     return (
         <Svg width={width} height={height}>
             <Polyline points={pathStr} stroke="rgba(255,255,255,0.45)" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-            {drivers.slice(0, 20).map(d => {
+            {drivers.slice(0, 20).filter(d => d.x !== 0.5 && d.y !== 0.5).map(d => {
                 const cx = d.x * width;
                 const cy = d.y * height;
                 return (
@@ -103,16 +104,26 @@ interface F1TelemetrySidePanelProps {
     onFullScreen: () => void;
 }
 
-export default function F1TelemetrySidePanel({ onClose, onFullScreen }: F1TelemetrySidePanelProps) {
-    const { height } = useWindowDimensions();
-    const { isLive, session, drivers, raceControl, fastestLap, circuitPath, lastUpdate } =
-        useF1Telemetry(true);
+export default function F1TelemetrySidePanel(props: F1TelemetrySidePanelProps) {
+    return (
+        <F1BridgeProvider>
+            {() => <F1TelemetrySidePanelInner {...props} />}
+        </F1BridgeProvider>
+    );
+}
+
+function F1TelemetrySidePanelInner({ onClose, onFullScreen }: F1TelemetrySidePanelProps) {
+    const {
+        isLive, isFinalised, session, drivers,
+        raceControl, fastestLap, circuitPath, lastUpdate,
+    } = useF1Telemetry(true);
 
     const [tab, setTab] = useState<'board' | 'map'>('board');
     const topDrivers = drivers.slice(0, 10);
+    const hasSession = isLive || isFinalised;
 
     const flagColor = {
-        GREEN: GREEN, YELLOW, RED: F1_RED, SC: YELLOW, VSC: YELLOW, CHEQUERED: '#fff',
+        GREEN, YELLOW, RED: F1_RED, SC: YELLOW, VSC: YELLOW, CHEQUERED: '#fff',
     }[session?.flag || 'GREEN'] || GREEN;
 
     return (
@@ -133,11 +144,11 @@ export default function F1TelemetrySidePanel({ onClose, onFullScreen }: F1Teleme
 
                 <View style={{ flexDirection: 'row', gap: 6 }}>
                     {/* Live indicator */}
-                    {isLive ? (
+                    {hasSession ? (
                         <View style={[styles.livePill, { borderColor: flagColor, backgroundColor: `${flagColor}20` }]}>
                             <View style={[styles.liveDot, { backgroundColor: flagColor }]} />
                             <Text style={[styles.liveTxt, { color: flagColor }]}>
-                                {session?.flag === 'SC' ? 'SC' : session?.flag === 'VSC' ? 'VSC' : 'VIVO'}
+                                {isFinalised ? 'FIN' : session?.flag === 'SC' ? 'SC' : session?.flag === 'VSC' ? 'VSC' : 'VIVO'}
                             </Text>
                         </View>
                     ) : (
@@ -176,7 +187,7 @@ export default function F1TelemetrySidePanel({ onClose, onFullScreen }: F1Teleme
                 {tab === 'board' ? (
                     <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
                         {/* Top 10 */}
-                        {(isLive ? topDrivers : []).map(d => {
+                        {(hasSession ? topDrivers : []).map(d => {
                             const lapColor = d.lastLapOverallBest ? PURPLE : d.lastLapPersonalBest ? GREEN : TEXT;
                             return (
                                 <View key={d.racingNumber} style={[
@@ -212,7 +223,7 @@ export default function F1TelemetrySidePanel({ onClose, onFullScreen }: F1Teleme
                             );
                         })}
 
-                        {!isLive && (
+                        {!hasSession && (
                             <View style={styles.noSession}>
                                 <WifiOff color={TEXT_DIM} size={22} />
                                 <Text style={styles.noSessionTxt}>Sin sesión F1 en vivo</Text>
@@ -232,14 +243,16 @@ export default function F1TelemetrySidePanel({ onClose, onFullScreen }: F1Teleme
                                     </Text>
                                 </View>
                                 <Text style={{ color: TEXT_DIM, fontSize: 9, marginTop: 2 }}>
-                                    Vuelta {fastestLap.lap} · {fastestLap.team}
+                                    {fastestLap.team}
                                 </Text>
                             </View>
                         )}
 
                         {/* Latest Race Control */}
                         {raceControl.slice(0, 3).map((m, i) => {
-                            const c = m.flag === 'YELLOW' ? YELLOW : m.flag === 'RED' ? F1_RED : m.flag === 'GREEN' ? GREEN : TEXT_DIM;
+                            const c = m.flag?.includes('YELLOW') ? YELLOW :
+                                m.flag?.includes('RED') ? F1_RED :
+                                    m.flag?.includes('GREEN') ? GREEN : TEXT_DIM;
                             return (
                                 <View key={i} style={[styles.rcRow, { borderLeftColor: c }]}>
                                     <Text style={{ color: c, fontSize: 9, fontWeight: '700' }}>{m.message}</Text>
@@ -250,7 +263,7 @@ export default function F1TelemetrySidePanel({ onClose, onFullScreen }: F1Teleme
                 ) : (
                     /* MAP TAB */
                     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 12 }}>
-                        <MiniMap circuitPath={circuitPath} drivers={isLive ? drivers : []} width={240} height={180} />
+                        <MiniMap circuitPath={circuitPath} drivers={hasSession ? drivers : []} width={240} height={180} />
                         {session && (
                             <Text style={{ color: TEXT_DIM, fontSize: 10, marginTop: 8, textAlign: 'center' }}>
                                 {session.circuitName}

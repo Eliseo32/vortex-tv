@@ -360,7 +360,7 @@ export default function TvPlayerScreen() {
     return () => backHandler.remove();
   }, [navigation]);
 
-  if (!cleanUrl) return <View style={{ flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' }}><AlertCircle color="#FACC15" size={64} /></View>;
+  if (!cleanUrl) return <View style={{ flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' }}><AlertCircle color="#B026FF" size={64} /></View>;
 
   const isWaitScreenVisible = !isDash && !isDirectVideo && !isVideoPlaying;
 
@@ -548,13 +548,27 @@ true;
     if (bad.some(h => url.includes(h))) return false;
     if (url.startsWith('intent://') || url.startsWith('market://') || url.includes('play.google.com')) return false;
 
+    // Dominios siempre permitidos (CDN de streams, DRM, certificados)
+    const ALWAYS_ALLOW = [
+      'cvattv.com.ar', 'nebunexa', 'widevine', 'license', 'drm',
+      'castercdn', 'cablevisión', 'cablevision', 'flow.com.ar',
+      'angulismotv', 'streamtp', 'welivesports', 'bestleague',
+    ];
+    if (ALWAYS_ALLOW.some(d => url.includes(d))) return true;
+
     // Si la navegacion es en el frame principal (top frame), ser muy estrictos
     if (isLocked && request.isTopFrame) {
       const originalDomain = cleanUrl.split('/')[2];
-      if (originalDomain && !url.includes(originalDomain) && !url.includes('about:blank') && !url.includes('mp4') && !url.includes('m3u8')) return false;
+      if (originalDomain && !url.includes(originalDomain)
+        && !url.includes('about:blank')
+        && !url.includes('mp4')
+        && !url.includes('m3u8')
+        && !url.includes('.mpd')
+      ) return false;
     }
     return true;
   };
+
 
   // ══════════════════════════════════════════════════════════════════════════
   // ── DRM NATIVE OVERLAY ────────────────────────────────────────────────────
@@ -576,7 +590,7 @@ true;
             duration={duration}
             isPaused={isPaused}
             qualityLevels={qualityLevels}
-            accentColor="#FACC15"
+            accentColor="#B026FF"
             forceShowTrigger={showOverlayTrigger}
             showF1Button={!showF1Panel}
             onF1={() => setShowF1Panel(true)}
@@ -588,8 +602,8 @@ true;
           <View style={StyleSheet.absoluteFillObject}>
             {!isVideoPlaying && (
               <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#050505', alignItems: 'center', justifyContent: 'center', zIndex: 40 }]}>
-                <ActivityIndicator size="large" color="#FACC15" />
-                <Text style={{ color: '#FACC15', fontWeight: '900', fontSize: 18, marginTop: 16, letterSpacing: 2, textTransform: 'uppercase' }}>Conectando DRM...</Text>
+                <ActivityIndicator size="large" color="#B026FF" />
+                <Text style={{ color: '#B026FF', fontWeight: '900', fontSize: 18, marginTop: 16, letterSpacing: 2, textTransform: 'uppercase' }}>Conectando DRM...</Text>
               </View>
             )}
             <Video source={{ uri: finalUrl }} style={StyleSheet.absoluteFillObject} resizeMode="contain" controls={true} onLoad={() => setIsVideoPlaying(true)} />
@@ -600,8 +614,8 @@ true;
           <View style={StyleSheet.absoluteFillObject}>
             {isWaitScreenVisible && (
               <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#050505', alignItems: 'center', justifyContent: 'center', zIndex: 40 }]}>
-                <ActivityIndicator size="large" color="#FACC15" />
-                <Text style={{ color: '#FACC15', fontWeight: '900', fontSize: 18, marginTop: 16, letterSpacing: 2, textTransform: 'uppercase' }}>Conectando...</Text>
+                <ActivityIndicator size="large" color="#B026FF" />
+                <Text style={{ color: '#B026FF', fontWeight: '900', fontSize: 18, marginTop: 16, letterSpacing: 2, textTransform: 'uppercase' }}>Conectando...</Text>
                 <Text style={{ color: '#6B7280', fontSize: 12, marginTop: 8, textAlign: 'center', maxWidth: '70%' }}>Bloqueando anuncios y ajustando el reproductor</Text>
               </View>
             )}

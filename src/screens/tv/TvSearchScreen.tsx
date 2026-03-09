@@ -39,10 +39,10 @@ export default function TvSearchScreen() {
           <View
             style={[
               { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 16, paddingHorizontal: 24, borderWidth: 4, borderColor: 'transparent' },
-              focused && { borderColor: '#FACC15', backgroundColor: 'rgba(255,255,255,0.1)', transform: [{ scale: 1.02 }], shadowColor: '#FACC15', elevation: 10, shadowOpacity: 0.2, shadowRadius: 10 }
+              focused && { borderColor: '#B026FF', backgroundColor: 'rgba(255,255,255,0.1)', transform: [{ scale: 1.02 }], shadowColor: '#B026FF', elevation: 10, shadowOpacity: 0.2, shadowRadius: 10 }
             ]}
           >
-            <Search color={focused ? "#FACC15" : "#9CA3AF"} size={32} />
+            <Search color={focused ? "#B026FF" : "#9CA3AF"} size={32} />
             <TextInput
               ref={inputRef}
               focusable={false} // El foco lo maneja TvFocusable en Android TV

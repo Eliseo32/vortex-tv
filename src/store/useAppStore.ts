@@ -146,7 +146,7 @@ export const useAppStore = create<AppState>()(
           if (userDoc.exists() && userDoc.data().profiles) {
             set({ profiles: userDoc.data().profiles });
           } else {
-            const defaultProfile = { id: Date.now().toString(), name: 'Admin', avatar: `https://api.dicebear.com/7.x/avataaars/png?seed=${uid}`, color: '#FACC15' };
+            const defaultProfile = { id: Date.now().toString(), name: 'Admin', avatar: `https://api.dicebear.com/7.x/avataaars/png?seed=${uid}`, color: '#B026FF' };
             await setDoc(doc(db, 'users', uid), { profiles: [defaultProfile] }, { merge: true });
             set({ profiles: [defaultProfile] });
           }
@@ -168,10 +168,15 @@ export const useAppStore = create<AppState>()(
       channelFolders: [],
       isLoadingContent: false,
       fetchCloudContent: async () => {
+        // Guard: don't fetch if Firebase user isn't ready yet
+        if (!auth.currentUser) {
+          console.log('[Store] fetchCloudContent: no Firebase user, skipping.');
+          return;
+        }
         set({ isLoadingContent: true });
         try {
-          // Run all Firebase queries in parallel for faster loading
-          const [contentQuery, agendaQuery, foldersQuery] = await Promise.all([
+          // Leer las colecciones principales en paralelo
+          const [contentQuery, agendaQuery, nowfutbolQuery] = await Promise.all([
             getDocs(collection(db, 'content')),
             getDocs(query(collection(db, 'agenda'), orderBy('createdAt', 'desc'))),
             getDocs(query(collection(db, 'canales_carpetas'), orderBy('order', 'asc'))),
@@ -183,10 +188,29 @@ export const useAppStore = create<AppState>()(
           const events: FeaturedEvent[] = [];
           agendaQuery.forEach((doc) => { events.push(doc.data() as FeaturedEvent); });
 
-          const folders: ChannelFolder[] = [];
-          foldersQuery.forEach((doc) => { folders.push(doc.data() as ChannelFolder); });
+          // nowfutbol: ya tienen campo `order`, los ponemos primero
+          const nowfutbolFolders: ChannelFolder[] = [];
+          nowfutbolQuery.forEach((doc) => { nowfutbolFolders.push(doc.data() as ChannelFolder); });
 
-          set({ cloudContent: items, featuredEvents: events, channelFolders: folders, isLoadingContent: false });
+          // angulismo: query separada para que un error no rompa todo
+          let uniqueAngulismo: ChannelFolder[] = [];
+          try {
+            const angulismoQuery = await getDocs(collection(db, 'channelFolders'));
+            const seenNames = new Set(nowfutbolFolders.map(f => f.name.toLowerCase().trim()));
+            let angulismoIdx = 10000;
+            angulismoQuery.forEach((doc) => {
+              const folder = { ...doc.data() as ChannelFolder, order: angulismoIdx++ };
+              if (!seenNames.has(folder.name.toLowerCase().trim())) {
+                uniqueAngulismo.push(folder);
+              }
+            });
+          } catch (angErr) {
+            console.warn('channelFolders (angulismo) no disponible:', angErr);
+          }
+
+          const mergedFolders: ChannelFolder[] = [...nowfutbolFolders, ...uniqueAngulismo];
+
+          set({ cloudContent: items, featuredEvents: events, channelFolders: mergedFolders, isLoadingContent: false });
         } catch (error) {
           console.error("Error al descargar catálogo:", error);
           set({ isLoadingContent: false });

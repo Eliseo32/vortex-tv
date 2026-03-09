@@ -30,7 +30,7 @@ export default function TvTopBar({ currentTab, setCurrentTab, forceFocus }: TvTo
         {/* LOGO */}
         <View style={{ marginRight: 48 }}>
           <Text style={{ color: '#fff', fontSize: 28, fontWeight: '900', letterSpacing: 4 }}>
-            VORTEX<Text style={{ color: '#FACC15' }}>.</Text>
+            VORTEX<Text style={{ color: '#B026FF' }}>.</Text>
           </Text>
         </View>
 
@@ -54,7 +54,7 @@ export default function TvTopBar({ currentTab, setCurrentTab, forceFocus }: TvTo
                     <Text style={{
                       fontWeight: focused || isActive ? '900' : '600',
                       fontSize: 16,
-                      color: focused ? '#FACC15' : isActive ? '#fff' : '#9CA3AF',
+                      color: focused ? '#B026FF' : isActive ? '#fff' : '#9CA3AF',
                       textTransform: 'uppercase',
                       letterSpacing: 1.5,
                       textShadowColor: focused ? 'rgba(250, 204, 21, 0.5)' : isActive ? 'rgba(255, 255, 255, 0.3)' : 'transparent',
@@ -64,7 +64,7 @@ export default function TvTopBar({ currentTab, setCurrentTab, forceFocus }: TvTo
                       {tab.label}
                     </Text>
                     {isActive && !focused && (
-                      <View style={{ position: 'absolute', bottom: -2, left: 16, right: 16, height: 3, backgroundColor: '#FACC15', borderRadius: 2 }} />
+                      <View style={{ position: 'absolute', bottom: -2, left: 16, right: 16, height: 3, backgroundColor: '#B026FF', borderRadius: 2 }} />
                     )}
                   </View>
                 )}

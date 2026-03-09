@@ -50,7 +50,7 @@ const HOME_ROWS: ContentRow[] = [
     id: 'movie',
     title: '🎬 Películas',
     Icon: Film,
-    accent: '#FACC15',
+    accent: '#B026FF',
     filter: (i) => i.type === 'movie',
   },
   {
@@ -102,7 +102,7 @@ const PremiumHeroButton = ({ icon: Icon, title, onPress, isPrimary = false, next
     {(focused: boolean) => (
       <View style={{
         flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 10,
-        backgroundColor: isPrimary ? (focused ? '#fff' : '#FACC15') : (focused ? '#fff' : 'rgba(255,255,255,0.15)'),
+        backgroundColor: isPrimary ? (focused ? '#fff' : '#B026FF') : (focused ? '#fff' : 'rgba(255,255,255,0.15)'),
         borderWidth: isPrimary ? 0 : 2, borderColor: focused ? 'transparent' : 'rgba(255,255,255,0.2)'
       }}>
         <Icon color={isPrimary ? "#000" : (focused ? "#000" : "#fff")} size={18} fill={isPrimary ? "#000" : "none"} />
@@ -156,7 +156,7 @@ const itemKeyExtractor = (item: any) => item.id;
 
 export default function TvHomeScreen() {
   const navigation = useNavigation<any>();
-  const { cloudContent, fetchCloudContent, isLoadingContent } = useAppStore();
+  const { cloudContent, fetchCloudContent, isLoadingContent, userId } = useAppStore();
   const [currentTab, setCurrentTab] = useState('home');
   const [forceFocusTopBar, setForceFocusTopBar] = useState(false);
   const lastInteractionTime = useRef(Date.now());
@@ -172,7 +172,7 @@ export default function TvHomeScreen() {
   const scrollOffset = useRef(0);
   const backPressCount = useRef(0);
 
-  useEffect(() => { if (cloudContent.length === 0) fetchCloudContent(); }, []);
+  useEffect(() => { if (userId) fetchCloudContent(); }, [userId]);
 
   // Hero: primeras 5 películas o series
   const featuredItems = useMemo(
@@ -264,7 +264,7 @@ export default function TvHomeScreen() {
   if (isLoadingContent) {
     return (
       <View style={{ flex: 1, backgroundColor: '#050505', alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color="#FACC15" />
+        <ActivityIndicator size="large" color="#B026FF" />
       </View>
     );
   }
@@ -330,7 +330,7 @@ export default function TvHomeScreen() {
                   <View style={{ position: 'absolute', bottom: 80, left: 50, width: '55%' }} pointerEvents="none">
                     {/* Metadata */}
                     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 10 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FACC15', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#B026FF', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4 }}>
                         {/* @ts-ignore */}
                         <Sparkles color="#000" size={12} fill="#000" />
                         <Text style={{ color: '#000', fontSize: 11, fontWeight: '900', letterSpacing: 1.5, marginLeft: 6, textTransform: 'uppercase' }}>
@@ -342,7 +342,7 @@ export default function TvHomeScreen() {
                       )}
                       {activeHeroItem.rating && (
                         <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 }}>
-                          <Text style={{ color: '#FACC15', fontSize: 12, fontWeight: '900' }}>{activeHeroItem.rating} ★</Text>
+                          <Text style={{ color: '#B026FF', fontSize: 12, fontWeight: '900' }}>{activeHeroItem.rating} ★</Text>
                         </View>
                       )}
                     </View>

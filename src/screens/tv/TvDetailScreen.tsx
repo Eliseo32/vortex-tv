@@ -13,7 +13,7 @@ const CinematicButton = ({ icon: Icon, title, onPress, bg = 'rgba(255,255,255,0.
     {(focused: boolean) => (
       <View style={{
         flexDirection: 'row', alignItems: 'center', paddingHorizontal: 32, paddingVertical: 18, borderRadius: 14,
-        backgroundColor: isPrimary ? (focused ? '#fff' : '#FACC15') : (focused ? '#fff' : bg),
+        backgroundColor: isPrimary ? (focused ? '#fff' : '#B026FF') : (focused ? '#fff' : bg),
         borderWidth: isPrimary ? 0 : 1, borderColor: focused ? 'transparent' : 'rgba(255,255,255,0.1)'
       }}>
         <Icon color={isPrimary ? "#000" : (focused ? "#000" : "#fff")} size={22} fill={isPrimary ? "#000" : "none"} />
@@ -183,8 +183,8 @@ export default function TvDetailScreen() {
                         <View className={`w-64 h-36 rounded-xl overflow-hidden justify-end p-5 bg-[#111] ${selectedEpisode === epNum && !focused ? 'border-2 border-white/50' : 'border border-transparent'}`}>
                           <Image source={{ uri: item.backdrop }} className="absolute inset-0 w-full h-full opacity-30" blurRadius={10} />
                           <View className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent" />
-                          <View className="absolute top-1/2 left-1/2 -mt-5 -ml-5"><Play color={focused ? "#FACC15" : "#fff"} size={40} fill={focused ? "#FACC15" : "none"} opacity={focused ? 1 : 0.7} /></View>
-                          <Text style={{ fontWeight: '900', fontSize: 22, color: focused ? '#FACC15' : '#fff', zIndex: 10 }}>Episodio {epNum}</Text>
+                          <View className="absolute top-1/2 left-1/2 -mt-5 -ml-5"><Play color={focused ? "#B026FF" : "#fff"} size={40} fill={focused ? "#B026FF" : "none"} opacity={focused ? 1 : 0.7} /></View>
+                          <Text style={{ fontWeight: '900', fontSize: 22, color: focused ? '#B026FF' : '#fff', zIndex: 10 }}>Episodio {epNum}</Text>
                           {isEpWatched && <View className="absolute top-3 right-3 bg-green-500 rounded-full p-1.5"><Check color="#fff" size={16} strokeWidth={4} /></View>}
                         </View>
                       )}

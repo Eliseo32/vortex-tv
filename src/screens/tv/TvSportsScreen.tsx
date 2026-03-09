@@ -7,6 +7,7 @@ import { Play, Trophy, Tv, Calendar, Wifi, WifiOff, X, Server, Filter, Zap } fro
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useAppStore } from '../../store/useAppStore';
 import TvFocusable from '../../components/tv/TvFocusable';
+import F1HeroBanner from '../../components/tv/F1HeroBanner';
 
 const { height: windowHeight, width: windowWidth } = Dimensions.get('window');
 
@@ -276,29 +277,8 @@ function AgendaSection({ events, activeFilter, onFilterChange }: {
                         {todayCapitalized} · {filtered.length} {filtered.length === 1 ? 'evento' : 'eventos'}
                     </Text>
                 </View>
-
-                {/* Botón F1 Telemetría */}
-                <TvFocusable
-                    onPress={() => navigation.navigate('F1TelemetryTV')}
-                    borderWidth={0}
-                    scaleTo={1.08}
-                    style={{
-                        flexDirection: 'row', alignItems: 'center', gap: 7,
-                        paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10,
-                        backgroundColor: 'rgba(225,6,0,0.12)', borderWidth: 1, borderColor: 'rgba(225,6,0,0.4)',
-                    }}
-                    focusedStyle={{ backgroundColor: 'rgba(225,6,0,0.25)', borderColor: '#e10600' }}
-                >
-                    {(f: boolean) => (
-                        <>
-                            <Zap color={f ? '#fff' : '#e10600'} size={15} fill={f ? '#fff' : '#e10600'} />
-                            <Text style={{ color: f ? '#fff' : '#e10600', fontSize: 12, fontWeight: '900', letterSpacing: 0.5 }}>
-                                F1 TELEMETRÍA
-                            </Text>
-                        </>
-                    )}
-                </TvFocusable>
             </View>
+
 
 
             {/* Filtro de categoría */}
@@ -579,6 +559,11 @@ export default function TvSportsScreen() {
                                 </Text>
                             </View>
                         </View>
+
+                        {/* ── BANNER F1 TELEMETRÍA ──────────────────────────── */}
+                        <F1HeroBanner
+                            onPress={() => navigation.navigate('F1TelemetryTV')}
+                        />
 
                         {/* ── AGENDA DEL DÍA ─────────────────────────────── */}
                         {todayAgenda.length > 0 && (

@@ -75,7 +75,7 @@ function TvChannelsVerticalGrid({ channels }: { channels: any[] }) {
       {/* Header y Filtros (Tabs) */}
       <View style={{ marginBottom: 16, paddingHorizontal: 64 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
-          <Tv color="#FACC15" size={26} strokeWidth={2} />
+          <Tv color="#B026FF" size={26} strokeWidth={2} />
           <Text style={{ color: '#fff', fontSize: 30, fontWeight: '900', letterSpacing: -0.5, marginLeft: 12 }}>
             TV en Vivo
           </Text>
@@ -104,7 +104,7 @@ function TvChannelsVerticalGrid({ channels }: { channels: any[] }) {
                     borderRadius: 20,
                     backgroundColor: isActive ? '#fff' : (focused ? '#333' : '#1a1a1a'),
                     borderWidth: focused ? 2 : 1,
-                    borderColor: focused ? '#FACC15' : 'transparent'
+                    borderColor: focused ? '#B026FF' : 'transparent'
                   }}>
                     <Text style={{
                       color: isActive ? '#000' : '#fff',
@@ -137,8 +137,8 @@ function TvChannelsVerticalGrid({ channels }: { channels: any[] }) {
               // Ir directo al reproductor con la URL del canal
               const url = item.videoUrl || '';
               if (url) {
-                // Si el canal tiene DRM keys, usar reproductor nativo
-                const hasDrm = url.includes('drmKeyId=') && url.includes('drmKey=');
+                // DrmPlayer: ClearKey (Sensa) o Widevine (Flow)
+                const hasDrm = url.includes('drmKeyId=') || url.includes('drmType=widevine');
                 if (hasDrm) {
                   navigation.navigate('DrmPlayerTV', { videoUrl: url });
                 } else {
@@ -158,7 +158,7 @@ function TvChannelsVerticalGrid({ channels }: { channels: any[] }) {
                 borderRadius: 12,
                 backgroundColor: focused ? '#18181b' : '#0f0f12',
                 borderWidth: focused ? 2 : 1,
-                borderColor: focused ? '#FACC15' : 'rgba(255,255,255,0.05)',
+                borderColor: focused ? '#B026FF' : 'rgba(255,255,255,0.05)',
                 overflow: 'hidden'
               }}>
                 {/* Lado Izquierdo: Número y Logo */}
@@ -181,7 +181,7 @@ function TvChannelsVerticalGrid({ channels }: { channels: any[] }) {
                     />
                   ) : (
                     <View style={{ width: 60, height: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: '#222', borderRadius: 6 }}>
-                      <Tv color="#FACC15" size={20} />
+                      <Tv color="#B026FF" size={20} />
                     </View>
                   )}
                   <View style={{ flex: 1, marginLeft: 16 }}>
@@ -202,7 +202,7 @@ function TvChannelsVerticalGrid({ channels }: { channels: any[] }) {
                     <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#ef4444', marginRight: 8 }} />
                     <Text style={{ color: '#ef4444', fontWeight: '800', fontSize: 12, letterSpacing: 0.5 }}>EN VIVO</Text>
                   </View>
-                  <Text numberOfLines={1} style={{ color: focused ? '#FACC15' : '#e4e4e7', fontSize: 16, fontWeight: '800' }}>
+                  <Text numberOfLines={1} style={{ color: focused ? '#B026FF' : '#e4e4e7', fontSize: 16, fontWeight: '800' }}>
                     Transmisión en Directo
                   </Text>
                   <Text numberOfLines={1} style={{ color: '#a1a1aa', fontSize: 13, marginTop: 4 }}>
@@ -223,7 +223,7 @@ function TvChannelsVerticalGrid({ channels }: { channels: any[] }) {
             borderWidth: 2, borderColor: 'rgba(255,255,255,0.05)', alignItems: 'center',
             shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.8, shadowRadius: 20, elevation: 20
           }}>
-            <Tv color="#FACC15" size={48} />
+            <Tv color="#B026FF" size={48} />
             <Text style={{ color: '#fff', fontSize: 28, fontWeight: '900', marginTop: 16, marginBottom: 8, textAlign: 'center' }}>
               {selectedChannel?.title || 'Canal en Vivo'}
             </Text>
@@ -251,11 +251,11 @@ function TvChannelsVerticalGrid({ channels }: { channels: any[] }) {
                   {(focused) => (
                     <View style={{
                       flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-                      backgroundColor: focused ? '#FACC15' : '#18181b',
+                      backgroundColor: focused ? '#B026FF' : '#18181b',
                       paddingVertical: 16, borderRadius: 12, borderWidth: 1,
-                      borderColor: focused ? '#FACC15' : 'rgba(255,255,255,0.1)'
+                      borderColor: focused ? '#B026FF' : 'rgba(255,255,255,0.1)'
                     }}>
-                      <Play color={focused ? "#000" : "#FACC15"} size={20} fill={focused ? "#000" : "transparent"} />
+                      <Play color={focused ? "#000" : "#B026FF"} size={20} fill={focused ? "#000" : "transparent"} />
                       <Text style={{
                         color: focused ? '#000' : '#fff', fontSize: 16, fontWeight: '800', marginLeft: 12, letterSpacing: 1
                       }}>
@@ -461,7 +461,7 @@ export default function TvLiveScreen({ category = 'movie' }: TvLiveScreenProps) 
                       borderRadius: 6, borderWidth: 1, borderColor: 'rgba(250,204,21,0.3)',
                       alignSelf: 'flex-start', marginBottom: 8,
                     }}>
-                      <Text style={{ color: '#FACC15', fontSize: 9, fontWeight: '900', letterSpacing: 1.5, textTransform: 'uppercase' }}>
+                      <Text style={{ color: '#B026FF', fontSize: 9, fontWeight: '900', letterSpacing: 1.5, textTransform: 'uppercase' }}>
                         Últimos Agregados
                       </Text>
                     </View>
@@ -484,7 +484,7 @@ export default function TvLiveScreen({ category = 'movie' }: TvLiveScreenProps) 
                         <View style={{
                           flexDirection: 'row', alignItems: 'center',
                           paddingHorizontal: 24, paddingVertical: 10, borderRadius: 8,
-                          backgroundColor: focused ? '#fff' : '#FACC15',
+                          backgroundColor: focused ? '#fff' : '#B026FF',
                         }}>
                           <Play color="#000" size={15} fill="#000" />
                           <Text style={{ color: '#000', fontWeight: '900', fontSize: 13, marginLeft: 8, letterSpacing: 1, textTransform: 'uppercase' }}>
@@ -500,7 +500,7 @@ export default function TvLiveScreen({ category = 'movie' }: TvLiveScreenProps) 
                           <View key={idx} style={{
                             height: 4, borderRadius: 2, marginRight: 6,
                             width: idx === carouselIndex ? 32 : 10,
-                            backgroundColor: idx === carouselIndex ? '#FACC15' : 'rgba(255,255,255,0.3)',
+                            backgroundColor: idx === carouselIndex ? '#B026FF' : 'rgba(255,255,255,0.3)',
                           }} />
                         ))}
                       </View>

@@ -30,7 +30,7 @@ export default function TvMyListScreen() {
         {savedItems.length > 0 && (
           <View className="bg-white/10 px-5 py-2.5 rounded-full border border-white/5 flex-row items-center">
             <Text className="text-gray-300 font-bold uppercase tracking-widest text-sm mr-3">Títulos Guardados</Text>
-            <Text className="text-vortex-yellow font-black text-xl">{savedItems.length}</Text>
+            <Text className="text-vortex-primary font-black text-xl">{savedItems.length}</Text>
           </View>
         )}
       </View>
@@ -39,8 +39,8 @@ export default function TvMyListScreen() {
         <View className="flex-1 items-center justify-center pb-32">
           
           <View className="w-40 h-40 bg-white/5 rounded-full items-center justify-center mb-8 border border-white/10 shadow-xl shadow-black">
-            <View className="w-32 h-32 bg-vortex-yellow/10 rounded-full items-center justify-center border border-vortex-yellow/20">
-              <Star color="#FACC15" size={64} strokeWidth={1.5} />
+            <View className="w-32 h-32 bg-vortex-primary/10 rounded-full items-center justify-center border border-vortex-primary/20">
+              <Star color="#B026FF" size={64} strokeWidth={1.5} />
             </View>
           </View>
           
@@ -54,7 +54,7 @@ export default function TvMyListScreen() {
           {/* Botón informativo premium */}
           <TvFocusable onPress={() => navigation.navigate('MainTV')} borderWidth={3} style={{ borderRadius: 16 }}>
             {(focused) => (
-              <View className={`flex-row items-center justify-center px-10 py-5 rounded-2xl ${focused ? 'bg-vortex-yellow' : 'bg-[#111]'}`}>
+              <View className={`flex-row items-center justify-center px-10 py-5 rounded-2xl ${focused ? 'bg-vortex-primary' : 'bg-[#111]'}`}>
                 <PlusCircle color={focused ? "#000" : "#fff"} size={28} />
                 <Text className={`font-black text-xl ml-4 tracking-widest uppercase ${focused ? 'text-black' : 'text-white'}`}>
                   Ir a Explorar

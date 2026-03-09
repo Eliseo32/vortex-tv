@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, ActivityIndicator, Image, Dimensions } from 'react-native';
+import { View, Text, TextInput, ActivityIndicator, Dimensions, StyleSheet } from 'react-native';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../config/firebase';
 import TvFocusable from '../../components/tv/TvFocusable';
@@ -12,106 +12,119 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Estados manuales de foco para los inputs
   const [emailFocused, setEmailFocused] = useState(false);
   const [passFocused, setPassFocused] = useState(false);
 
   const handleLogin = async () => {
     if (!email || !password) {
-      setError('Por favor, ingresa tu correo y contraseña.');
+      setError('Ingresa tu correo y contraseña.');
       return;
     }
     setLoading(true);
     setError('');
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      // La navegación la maneja AppNavigator mediante onAuthStateChanged
     } catch (err: any) {
-      setError('Credenciales incorrectas. Verifica tu usuario y contraseña.');
+      setError('Credenciales incorrectas.');
       setLoading(false);
     }
   };
 
   return (
-    <View className="flex-1 bg-[#050505]">
-      {/* Fondo de películas estilo Netflix */}
-      <Image 
-        source={{ uri: 'https://images.unsplash.com/photo-1574267432553-4b462808152f?q=80&w=2000&auto=format&fit=crop' }} 
-        style={{ position: 'absolute', width: '100%', height: '100%', opacity: 0.2 }} 
-      />
-      <View className="absolute inset-0 bg-gradient-to-r from-[#050505] via-[#050505]/90 to-[#050505]/60" />
+    <View style={{ flex: 1, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' }}>
 
-      <View className="flex-1 flex-row items-center px-24">
-        {/* LOGO AREA */}
-        <View className="flex-1">
-          <Text className="text-white text-7xl font-black tracking-widest mb-6">
-            VORTEX<Text className="text-vortex-yellow">.</Text>
+      {/* GLOW DE FONDO (Pure CSS) */}
+      <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+        <View style={{ position: 'absolute', top: -height * 0.4, left: -width * 0.2, width: width * 0.8, height: width * 0.8, backgroundColor: 'rgba(176,38,255,0.07)', borderRadius: 9999, transform: [{ scale: 2 }], filter: 'blur(200px)' as any }} />
+        <View style={{ position: 'absolute', bottom: -height * 0.4, right: -width * 0.2, width: width * 0.8, height: width * 0.8, backgroundColor: 'rgba(176,38,255,0.05)', borderRadius: 9999, transform: [{ scale: 2 }], filter: 'blur(200px)' as any }} />
+      </View>
+
+      {/* CONTENEDOR PRINCIPAL CENTRADO */}
+      <View style={{ width: Math.min(600, width * 0.6), alignItems: 'center', zIndex: 10 }}>
+
+        {/* BRANDING LOGO */}
+        <View style={{ alignItems: 'center', marginBottom: height * 0.05 }}>
+          <Text style={{ color: '#ffffff', fontSize: Math.min(56, height * 0.08), fontWeight: '900', letterSpacing: 8 }}>
+            VORTEX<Text style={{ color: '#B026FF' }}>.</Text>
           </Text>
-          <Text className="text-gray-400 text-2xl font-medium leading-10 max-w-lg">
-            Todo tu entretenimiento en un solo lugar. Inicia sesión para continuar.
+          <Text style={{ color: '#888888', fontSize: Math.min(18, height * 0.03), fontWeight: '500', marginTop: 5, letterSpacing: 1 }}>
+            Ultra Premium Streaming
           </Text>
         </View>
 
-        {/* FORMULARIO */}
-        <View className="w-[500px] bg-[#111] p-12 rounded-[32px] border border-white/10 shadow-2xl shadow-black">
-          <Text className="text-white text-3xl font-black mb-10 text-center">Inicia Sesión</Text>
-          
-          {error ? <Text className="text-red-500 text-center mb-6 font-bold">{error}</Text> : null}
+        {error ? (
+          <View style={{ backgroundColor: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.3)', borderWidth: 1, padding: 16, borderRadius: 12, marginBottom: 20, width: '100%' }}>
+            <Text style={{ color: '#ef4444', textAlign: 'center', fontSize: 18, fontWeight: '600' }}>{error}</Text>
+          </View>
+        ) : null}
 
-          {/* INPUT EMAIL */}
-          <View 
-            style={[
-              { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, marginBottom: 24, borderWidth: 4, borderColor: 'transparent' },
-              emailFocused && { borderColor: '#FACC15', backgroundColor: 'rgba(255,255,255,0.1)' }
-            ]}
-          >
+        {/* INPUT EMAIL */}
+        <View style={{ width: '100%', marginBottom: height * 0.03 }}>
+          <View style={[
+            { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 16, borderWidth: 4, borderColor: 'transparent', width: '100%', overflow: 'hidden' },
+            emailFocused && {
+              borderColor: '#B026FF', backgroundColor: 'rgba(176,38,255,0.15)'
+            }
+          ]}>
             <TextInput
               focusable={true}
-              placeholder="Correo Electrónico"
-              placeholderTextColor="#6B7280"
+              placeholder="Correo electrónico"
+              placeholderTextColor="#666"
               value={email}
               onChangeText={setEmail}
               onFocus={() => setEmailFocused(true)}
               onBlur={() => setEmailFocused(false)}
               keyboardType="email-address"
               autoCapitalize="none"
-              style={{ color: '#fff', fontSize: 20, fontWeight: '600', paddingHorizontal: 20, paddingVertical: 20 }}
+              style={{ color: '#fff', fontSize: Math.min(24, height * 0.035), paddingHorizontal: 32, paddingVertical: Math.min(26, height * 0.03), fontWeight: '500', textAlign: 'center' }}
             />
           </View>
+        </View>
 
-          {/* INPUT CONTRASEÑA */}
-          <View 
-            style={[
-              { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, marginBottom: 32, borderWidth: 4, borderColor: 'transparent' },
-              passFocused && { borderColor: '#FACC15', backgroundColor: 'rgba(255,255,255,0.1)' }
-            ]}
-          >
+        {/* INPUT PASS */}
+        <View style={{ width: '100%', marginBottom: height * 0.05 }}>
+          <View style={[
+            { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 16, borderWidth: 4, borderColor: 'transparent', width: '100%', overflow: 'hidden' },
+            passFocused && {
+              borderColor: '#B026FF', backgroundColor: 'rgba(176,38,255,0.15)'
+            }
+          ]}>
             <TextInput
               focusable={true}
               placeholder="Contraseña"
-              placeholderTextColor="#6B7280"
+              placeholderTextColor="#666"
               value={password}
               onChangeText={setPassword}
               onFocus={() => setPassFocused(true)}
               onBlur={() => setPassFocused(false)}
               secureTextEntry
-              style={{ color: '#fff', fontSize: 20, fontWeight: '600', paddingHorizontal: 20, paddingVertical: 20 }}
+              style={{ color: '#fff', fontSize: Math.min(24, height * 0.035), paddingHorizontal: 32, paddingVertical: Math.min(26, height * 0.03), fontWeight: '500', textAlign: 'center' }}
             />
           </View>
+        </View>
 
-          {/* BOTÓN LOGIN USANDO NUESTRO COMPONENTE */}
-          <TvFocusable onPress={handleLogin} borderWidth={3} style={{ borderRadius: 12 }}>
+        {/* BOTÓN INICIAR */}
+        <View style={{ width: '100%' }}>
+          <TvFocusable onPress={handleLogin} borderWidth={0} scaleTo={1.05} style={{ borderRadius: 16 }}>
             {(focused) => (
-              <View className={`py-5 rounded-xl items-center justify-center ${focused ? 'bg-white' : 'bg-vortex-yellow'}`}>
+              <View style={[{
+                paddingVertical: Math.min(24, height * 0.035), borderRadius: 16, alignItems: 'center', justifyContent: 'center',
+                backgroundColor: focused ? '#ffffff' : '#B026FF',
+              }, focused && {
+                shadowColor: '#B026FF', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 1, shadowRadius: 40, elevation: 25,
+              }]}>
                 {loading ? (
-                  <ActivityIndicator color="#000" />
+                  <ActivityIndicator color={focused ? '#000' : '#fff'} size="large" />
                 ) : (
-                  <Text className={`font-black text-xl tracking-widest uppercase text-black`}>Entrar</Text>
+                  <Text style={{ color: focused ? '#000' : '#fff', fontSize: Math.min(24, height * 0.035), fontWeight: '900', letterSpacing: 3, textTransform: 'uppercase' }}>
+                    Iniciar Sesión
+                  </Text>
                 )}
               </View>
             )}
           </TvFocusable>
         </View>
+
       </View>
     </View>
   );

@@ -432,8 +432,8 @@ export default function TvPartyPlayerScreen() {
           <View style={StyleSheet.absoluteFillObject} className="bg-black">
             {isWaitScreenVisible && (
               <View style={StyleSheet.absoluteFillObject} className="bg-[#050505] items-center justify-center z-40 absolute">
-                <ActivityIndicator size="large" color="#FACC15" className="mb-6" />
-                <Text className="text-vortex-yellow font-black text-xl tracking-widest uppercase">
+                <ActivityIndicator size="large" color="#B026FF" className="mb-6" />
+                <Text className="text-vortex-primary font-black text-xl tracking-widest uppercase">
                   Preparando Sala y Video...
                 </Text>
               </View>

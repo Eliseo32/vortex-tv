@@ -247,7 +247,7 @@ function SportWebView({ url, onM3u8Detected, onNextServer, currentServerIndex, s
             <Text style={styles.waitSub}>Servidor {currentServerIndex + 1} de {serverCount}</Text>
             {currentServerIndex > 0 && (
               <View style={styles.switchRow}>
-                <RefreshCw color="#FACC15" size={12} />
+                <RefreshCw color="#B026FF" size={12} />
                 <Text style={styles.switchText}>Buscando mejor señal...</Text>
               </View>
             )}
@@ -445,5 +445,5 @@ const styles = StyleSheet.create({
   waitTitle: { color: '#fff', fontSize: 22, fontWeight: '900', textAlign: 'center', marginBottom: 8 },
   waitSub: { color: '#6B7280', fontSize: 13, fontWeight: '600' },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, backgroundColor: 'rgba(250,204,21,0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  switchText: { color: '#FACC15', fontSize: 11, fontWeight: '700' },
+  switchText: { color: '#B026FF', fontSize: 11, fontWeight: '700' },
 });

@@ -57,7 +57,7 @@ export default function TvPartySetupScreen() {
             </View>
             <View className="bg-black/50 border border-white/5 rounded-2xl p-8 mb-10 items-center">
               <Text className="text-gray-500 text-sm font-bold mb-2 uppercase tracking-widest">Tu Código Privado</Text>
-              <Text style={{ letterSpacing: 8 }} className="text-vortex-yellow font-mono text-5xl">{generatedCode}</Text>
+              <Text style={{ letterSpacing: 8 }} className="text-vortex-primary font-mono text-5xl">{generatedCode}</Text>
             </View>
             <TvFocusable onPress={createParty} scaleTo={1.05} borderWidth={4} style={{ borderRadius: 16 }}>
               {(focused) => (
@@ -86,19 +86,19 @@ export default function TvPartySetupScreen() {
               autoCapitalize="characters"
               style={{ letterSpacing: 8 }}
               className={`bg-black/50 text-white text-center font-mono text-4xl py-8 rounded-2xl border-4 mb-10 transition-colors
-                ${inputFocused ? 'border-vortex-yellow bg-white/10' : 'border-white/5'}
+                ${inputFocused ? 'border-vortex-primary bg-white/10' : 'border-white/5'}
               `}
             />
             <TvFocusable onPress={joinParty} scaleTo={1.05} borderWidth={4} style={{ borderRadius: 16 }}>
               {(focused) => {
                 const canJoin = joinCode.length >= 4;
                 return (
-                  <View className={`py-6 rounded-xl flex-row justify-center items-center ${focused && canJoin ? 'bg-vortex-yellow' :
+                  <View className={`py-6 rounded-xl flex-row justify-center items-center ${focused && canJoin ? 'bg-vortex-primary' :
                       focused ? 'bg-white/20' :
                         canJoin ? 'bg-[#222]' : 'bg-black/40'
                     }`}>
                     <Text className={`font-black text-2xl tracking-widest uppercase ${focused && canJoin ? 'text-black' :
-                        canJoin ? 'text-vortex-yellow' : 'text-gray-600'
+                        canJoin ? 'text-vortex-primary' : 'text-gray-600'
                       }`}>Conectar</Text>
                   </View>
                 );

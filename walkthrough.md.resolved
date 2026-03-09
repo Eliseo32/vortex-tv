@@ -1,0 +1,71 @@
+# F1 Telemetry Integration — Walkthrough
+
+## Resumen
+
+Integración completa de telemetría F1 en tiempo real usando **f1telemetry.com** como fuente de datos, con UI nativa para Android TV.
+
+## Arquitectura
+
+```mermaid
+graph TD
+    A["WebView oculto (0×0 px)"] -->|carga f1telemetry.com| B[SignalR WebSocket]
+    B -->|JS inyectado intercepta msgs| C[postMessage → React Native]
+    C -->|handleMessage| D[F1BridgeProvider Context]
+    D --> E[TvF1TelemetryScreen]
+    D --> F[F1TelemetrySidePanel]
+    G["api.f1telemetry.com/upcoming"] -->|REST fetch| D
+    H["api.f1telemetry.com/calendar"] -->|REST fetch| D
+```
+
+## Archivos modificados
+
+| Archivo | Cambios |
+|---|---|
+| [useF1Telemetry.tsx](file:///c:/Users/elise/Desktop/vortexTv/vortexTv/vortex-tv/src/hooks/useF1Telemetry.tsx) | Reescrito completo → F1BridgeProvider + useF1Telemetry context. WebSocket proxy inyectado, deep merge, soporte para 8 tipos de datos SignalR |
+| [TvF1TelemetryScreen.tsx](file:///c:/Users/elise/Desktop/vortexTv/vortexTv/vortex-tv/src/screens/tv/TvF1TelemetryScreen.tsx) | Layout 3 columnas con leaderboard, mapa SVG, race control. 4 tabs (Streams/Telemetría/Mapa/Radio). Countdown cuando no hay sesión |
+| [F1TelemetrySidePanel.tsx](file:///c:/Users/elise/Desktop/vortexTv/vortexTv/vortex-tv/src/components/tv/F1TelemetrySidePanel.tsx) | Actualizado para usar nuevo hook del contexto |
+| [f1-session-monitor.js](file:///c:/Users/elise/Desktop/vortexTv/vortexTv/vortex-tv/scripts/f1-session-monitor.js) | Usa api.f1telemetry.com/upcoming como fuente principal |
+
+## Diseños de referencia
+
+````carousel
+![Layout 3 columnas — telemetría en vivo](file:///C:/Users/elise/.gemini/antigravity/brain/b77dec0b-aec2-46a9-b40c-b5cd2ce6b0fd/f1_live_design_1772856043916.png)
+<!-- slide -->
+![Tab Mapa — circuito con pilotos](file:///C:/Users/elise/.gemini/antigravity/brain/b77dec0b-aec2-46a9-b40c-b5cd2ce6b0fd/f1_mapa_tab_1772856940600.png)
+<!-- slide -->
+![Tab Radio — race control + comunicaciones](file:///C:/Users/elise/.gemini/antigravity/brain/b77dec0b-aec2-46a9-b40c-b5cd2ce6b0fd/f1_radio_tab_1772856949861.png)
+<!-- slide -->
+![Countdown — sin sesión activa](file:///C:/Users/elise/.gemini/antigravity/brain/b77dec0b-aec2-46a9-b40c-b5cd2ce6b0fd/f1_countdown_design_1772856064199.png)
+````
+
+## f1telemetry.com — Estado actual
+
+La página muestra datos del Q3 de Melbourne (finalizado) con tabla completa de pilotos:
+
+````carousel
+![Telemetría real — Top 10](file:///C:/Users/elise/.gemini/antigravity/brain/b77dec0b-aec2-46a9-b40c-b5cd2ce6b0fd/f1_telemetry_top_1772892968828.png)
+<!-- slide -->
+![Telemetría real — Bottom + Mapa + RC](file:///C:/Users/elise/.gemini/antigravity/brain/b77dec0b-aec2-46a9-b40c-b5cd2ce6b0fd/f1_bottom_left_radio_1772893042963.png)
+````
+
+## Datos procesados del WebSocket
+
+| Tipo SignalR | Datos extraídos |
+|---|---|
+| `DriverList` | Nombre, TLA, equipo |
+| `TimingData` | Posición, gap, interval, tiempos, sectores, pits, speed |
+| `TimingAppData` | Compuesto neumático, stint laps |
+| `CarData` | DRS, velocidad |
+| `Position.z` | Coordenadas X/Y en circuito |
+| `SessionInfo` | GP, sesión, circuito, país |
+| `RaceControlMessages` | Mensajes RC con bandera y categoría |
+| `TeamRadio` | Audio URL, piloto, equipo |
+| `LapCount` | Vuelta actual / total |
+| `TrackStatus` | Estado pista (green/yellow/red/SC) |
+
+## Verificación
+
+- ✅ TypeScript compilation — 0 errores en archivos F1
+- ✅ Todas las dependencias presentes en package.json
+- ⏳ Test live session — próxima oportunidad: Carrera Melbourne (mañana ~1:00 AM)
+- ✅ Countdown funcional via api.f1telemetry.com/upcoming

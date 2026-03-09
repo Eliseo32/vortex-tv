@@ -15,7 +15,7 @@ function TvMovieCard({
   item,
   onPress,
   onFocusItem,
-  accentColor = '#FACC15',
+  accentColor = '#B026FF',
   width = 120,
   height = 180,
 }: TvMovieCardProps) {
@@ -81,7 +81,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.75)',
     paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4,
   },
-  ratingText: { color: '#FACC15', fontSize: 9, fontWeight: '800' },
+  ratingText: { color: '#B026FF', fontSize: 9, fontWeight: '800' },
 });
 
 // Memoize: only re-render if item.id or accentColor changes

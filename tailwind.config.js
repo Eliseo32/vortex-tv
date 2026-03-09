@@ -6,7 +6,7 @@ module.exports = {
       colors: {
         vortex: {
           dark: '#050505',
-          yellow: '#FACC15',
+          primary: '#B026FF',
         }
       }
     },

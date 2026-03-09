@@ -1,11 +1,17 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, FlatList, Image, Animated, StyleSheet } from 'react-native';
+import { View, Text, FlatList, Image, Animated, StyleSheet, Dimensions } from 'react-native';
 import { useAppStore } from '../../store/useAppStore';
 import TvFocusable from '../../components/tv/TvFocusable';
+
+const { width, height } = Dimensions.get('window');
 
 export default function ProfileScreen() {
   const { userId, profiles, loadProfiles, setProfile } = useAppStore();
   const bgFadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Calculamos tamaños dinámicos relativos a la altura de la TV
+  const AVATAR_SIZE = height * 0.28;
+  const AVATAR_FOCUSED_SCALE = 1.15;
 
   useEffect(() => {
     if (userId) {
@@ -22,83 +28,94 @@ export default function ProfileScreen() {
   }, []);
 
   return (
-    <Animated.View style={{ flex: 1, backgroundColor: '#050505', opacity: bgFadeAnim, alignItems: 'center', justifyContent: 'center' }}>
+    <Animated.View style={{ flex: 1, backgroundColor: '#000000', opacity: bgFadeAnim, alignItems: 'center', justifyContent: 'center' }}>
 
-      {/* Fondo Premium Oscuro Neumórfico */}
-      <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: '#050505' }}>
-        <View style={{ position: 'absolute', top: '-30%', left: '-20%', width: '70%', height: '70%', backgroundColor: 'rgba(59, 130, 246, 0.04)', borderRadius: 999, filter: 'blur(120px)' as any }} />
-        <View style={{ position: 'absolute', bottom: '-30%', right: '-20%', width: '70%', height: '70%', backgroundColor: 'rgba(250, 204, 21, 0.03)', borderRadius: 999, filter: 'blur(120px)' as any }} />
+      {/* GLOW DE FONDO (Pure CSS, OLED Black) */}
+      <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+        <View style={{ position: 'absolute', top: -height * 0.3, left: -width * 0.1, width: width * 0.5, height: width * 0.5, backgroundColor: 'rgba(176,38,255,0.06)', borderRadius: 9999, filter: 'blur(200px)' as any }} />
+        <View style={{ position: 'absolute', bottom: -height * 0.3, right: -width * 0.1, width: width * 0.5, height: width * 0.5, backgroundColor: 'rgba(176,38,255,0.06)', borderRadius: 9999, filter: 'blur(200px)' as any }} />
       </View>
 
-      <View style={{ position: 'absolute', top: 60, alignItems: 'center' }}>
-        <Text style={{ color: '#FACC15', fontSize: 20, fontWeight: '900', letterSpacing: 6, opacity: 0.8 }}>VORTEX TV</Text>
+      {/* LOGO SUPERIOR CENTRADO DISTANTE */}
+      <View style={{ position: 'absolute', top: height * 0.08, left: 0, right: 0, alignItems: 'center' }}>
+        <Text style={{ color: '#fff', fontSize: Math.min(42, height * 0.06), fontWeight: '900', letterSpacing: 4 }}>
+          VORTEX<Text style={{ color: '#B026FF' }}>.</Text>
+        </Text>
       </View>
 
+      {/* TITULO */}
       <Text style={{
-        color: '#fff', fontSize: 48, fontWeight: '800', letterSpacing: 1, marginBottom: 80,
-        textShadowColor: 'rgba(0,0,0,0.8)', textShadowOffset: { width: 0, height: 4 }, textShadowRadius: 10
+        color: '#fff', fontSize: Math.min(64, height * 0.08), fontWeight: '800', letterSpacing: 1, marginBottom: height * 0.1,
+        textShadowColor: 'rgba(176,38,255,0.2)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 20
       }}>
-        ¿Quién está viendo hoy?
+        ¿Quién está viendo?
       </Text>
 
-      <FlatList
-        data={profiles}
-        keyExtractor={(item) => item.id}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 }}
-        renderItem={({ item }) => {
-          // Si no tiene avatar local, usa un placeholder premium
-          const avatarSource = item.avatar && item.avatar.trim() !== ''
-            ? { uri: item.avatar }
-            : { uri: `https://api.dicebear.com/7.x/notionists/png?seed=${item.name}&backgroundColor=${(item.color || 'FACC15').replace('#', '')}` };
+      {/* LISTA DE PERFILES HORIZONTAL */}
+      <View style={{ height: height * 0.45, justifyContent: 'center' }}>
+        <FlatList
+          data={profiles}
+          keyExtractor={(item) => item.id}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ alignItems: 'center', paddingHorizontal: width * 0.1 }}
+          renderItem={({ item }) => {
+            const avatarSource = item.avatar && item.avatar.trim() !== ''
+              ? { uri: item.avatar }
+              : { uri: `https://api.dicebear.com/7.x/notionists/png?seed=${item.name}&backgroundColor=${(item.color || 'B026FF').replace('#', '')}` };
 
-          return (
-            <View style={{ marginHorizontal: 28, alignItems: 'center' }}>
-              <TvFocusable
-                onPress={() => setProfile(item)}
-                scaleTo={1.12}
-                borderWidth={0}
-                style={{ borderRadius: 90, alignItems: 'center' }}
-                focusedStyle={{ backgroundColor: 'transparent' }}
-              >
-                {(focused) => (
-                  <View style={{ alignItems: 'center' }}>
-                    <View style={{
-                      width: 180, height: 180, borderRadius: 90, overflow: 'hidden',
-                      backgroundColor: '#111',
-                      borderWidth: focused ? 6 : 0,
-                      borderColor: focused ? (item.color || '#FACC15') : 'transparent',
-                      shadowColor: focused ? (item.color || '#FACC15') : '#000',
-                      shadowOffset: { width: 0, height: focused ? 0 : 20 },
-                      shadowOpacity: focused ? 0.8 : 0.6,
-                      shadowRadius: focused ? 25 : 20,
-                      elevation: 15,
-                    }}>
-                      <Image
-                        source={avatarSource}
-                        style={{ width: '100%', height: '100%', opacity: focused ? 1 : 0.5 }}
-                        resizeMode="cover"
-                      />
+            return (
+              <View style={{ marginHorizontal: width * 0.03, alignItems: 'center' }}>
+                <TvFocusable
+                  onPress={() => setProfile(item)}
+                  scaleTo={AVATAR_FOCUSED_SCALE}
+                  borderWidth={0}
+                  style={{ borderRadius: AVATAR_SIZE / 2, alignItems: 'center', justifyContent: 'center' }}
+                  focusedStyle={{ backgroundColor: 'transparent' }}
+                >
+                  {(focused) => (
+                    <View style={{ alignItems: 'center' }}>
 
-                      {/* Borde sutil oscuro interno para el círculo */}
-                      <View style={{ position: 'absolute', inset: 0, borderWidth: 2, borderColor: 'rgba(255,255,255,0.08)', borderRadius: 90 }} pointerEvents="none" />
+                      {/* AVATAR CIRCULAR */}
+                      <View style={[
+                        {
+                          width: AVATAR_SIZE, height: AVATAR_SIZE, borderRadius: AVATAR_SIZE / 2, overflow: 'hidden',
+                          backgroundColor: '#111',
+                          borderWidth: focused ? 6 : 0,
+                          borderColor: focused ? '#B026FF' : 'transparent', // Sin elevación, puro borde grueso de neón
+                        },
+                        !focused && { opacity: 0.5 } // Atenuar los avatares no enfocados dramáticamente
+                      ]}>
+                        <Image
+                          source={avatarSource}
+                          style={{ width: '100%', height: '100%' }}
+                          resizeMode="cover"
+                        />
+                        {/* Borde interior HD */}
+                        <View style={{ position: 'absolute', inset: 0, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', borderRadius: AVATAR_SIZE / 2 }} pointerEvents="none" />
+                      </View>
+
+                      {/* NOMBRE DEL PERFIL */}
+                      <Text style={{
+                        color: focused ? '#ffffff' : '#555555',
+                        fontSize: Math.min(32, height * 0.04),
+                        fontWeight: focused ? '800' : '600',
+                        marginTop: height * 0.04,
+                        letterSpacing: 1,
+                        textShadowColor: focused ? 'rgba(176,38,255,1)' : 'transparent',
+                        textShadowOffset: { width: 0, height: 0 },
+                        textShadowRadius: focused ? 25 : 0,
+                      }}>
+                        {item.name}
+                      </Text>
                     </View>
-
-                    <Text style={{
-                      color: focused ? '#ffffff' : '#a1a1aa',
-                      fontSize: 24, fontWeight: '700', marginTop: 30, letterSpacing: 0.5,
-                      textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 4 }, textShadowRadius: 10
-                    }}>
-                      {item.name}
-                    </Text>
-                  </View>
-                )}
-              </TvFocusable>
-            </View>
-          );
-        }}
-      />
+                  )}
+                </TvFocusable>
+              </View>
+            );
+          }}
+        />
+      </View>
     </Animated.View>
   );
 }

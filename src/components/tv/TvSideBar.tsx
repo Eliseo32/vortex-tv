@@ -44,15 +44,15 @@ function SidebarItem({
                             borderWidth: isActive && !focused ? 1 : 0,
                             borderColor: 'rgba(255,255,255,0.12)',
                         }}>
-                            <Icon color={focused ? '#FACC15' : isActive ? '#fff' : '#6B7280'} size={21} strokeWidth={focused || isActive ? 2.5 : 1.8} />
+                            <Icon color={focused ? '#B026FF' : isActive ? '#fff' : '#6B7280'} size={21} strokeWidth={focused || isActive ? 2.5 : 1.8} />
                             {isActive && !isExpanded && (
-                                <View style={{ position: 'absolute', bottom: -6, width: 4, height: 4, borderRadius: 2, backgroundColor: focused ? '#FACC15' : '#fff' }} />
+                                <View style={{ position: 'absolute', bottom: -6, width: 4, height: 4, borderRadius: 2, backgroundColor: focused ? '#B026FF' : '#fff' }} />
                             )}
                         </View>
 
                         {/* Texto mostrado SÓLO cuando el sidebar está expandido */}
                         {isExpanded && (
-                            <Text style={{ marginLeft: 16, color: focused ? '#FACC15' : isActive ? '#fff' : '#9CA3AF', fontSize: 16, fontWeight: focused || isActive ? '800' : '600', letterSpacing: 0.5 }}>
+                            <Text style={{ marginLeft: 16, color: focused ? '#B026FF' : isActive ? '#fff' : '#9CA3AF', fontSize: 16, fontWeight: focused || isActive ? '800' : '600', letterSpacing: 0.5 }}>
                                 {item.label}
                             </Text>
                         )}
@@ -76,7 +76,7 @@ function SidebarProfileItem({ isExpanded, onFocus, onBlur, onPress, currentProfi
         >
             {(focused: boolean) => (
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <View style={{ width: 38, height: 38, borderRadius: 19, overflow: 'hidden', borderWidth: 2, borderColor: focused ? '#ef4444' : (currentProfile?.color || '#FACC15') }}>
+                    <View style={{ width: 38, height: 38, borderRadius: 19, overflow: 'hidden', borderWidth: 2, borderColor: focused ? '#ef4444' : (currentProfile?.color || '#B026FF') }}>
                         {currentProfile?.avatar ? (
                             <Image source={{ uri: currentProfile.avatar }} style={{ width: '100%', height: '100%' }} />
                         ) : (

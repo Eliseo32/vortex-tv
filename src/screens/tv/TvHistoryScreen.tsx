@@ -18,7 +18,7 @@ const HistoryTvCard = ({ historyItem, onPress }: any) => {
               <Image source={{ uri: movie.poster }} className="w-full h-full" resizeMode="cover" />
               {focused && (
                 <View className="absolute inset-0 bg-black/50 items-center justify-center">
-                  <View className="w-12 h-12 bg-vortex-yellow rounded-full items-center justify-center shadow-lg shadow-black">
+                  <View className="w-12 h-12 bg-vortex-primary rounded-full items-center justify-center shadow-lg shadow-black">
                     <Play color="#000" size={24} fill="#000" style={{ marginLeft: 3 }} />
                   </View>
                 </View>
@@ -26,7 +26,7 @@ const HistoryTvCard = ({ historyItem, onPress }: any) => {
             </View>
 
             <View className="flex-1 ml-6 justify-center">
-              <Text className={`text-[10px] font-bold tracking-widest uppercase mb-2 ${focused ? 'text-vortex-yellow' : 'text-gray-400'}`}>
+              <Text className={`text-[10px] font-bold tracking-widest uppercase mb-2 ${focused ? 'text-vortex-primary' : 'text-gray-400'}`}>
                 {isSeries ? 'Visto Recientemente' : 'Película'}
               </Text>
               <Text className="text-white font-black text-2xl mb-2 leading-tight" numberOfLines={2}>
@@ -34,8 +34,8 @@ const HistoryTvCard = ({ historyItem, onPress }: any) => {
               </Text>
               
               {isSeries ? (
-                <View className={`${focused ? 'bg-vortex-yellow/20' : 'bg-white/10'} self-start px-3 py-1.5 rounded mb-2`}>
-                  <Text className={`${focused ? 'text-vortex-yellow' : 'text-gray-300'} font-bold text-sm`}>
+                <View className={`${focused ? 'bg-vortex-primary/20' : 'bg-white/10'} self-start px-3 py-1.5 rounded mb-2`}>
+                  <Text className={`${focused ? 'text-vortex-primary' : 'text-gray-300'} font-bold text-sm`}>
                     Temporada {season} • Episodio {episode}
                   </Text>
                 </View>

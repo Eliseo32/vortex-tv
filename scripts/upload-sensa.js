@@ -166,6 +166,8 @@ function buildVideoUrl(channel) {
     if (channel.key) params.set('drmKey', channel.key);
     if (referer) params.set('drmReferer', referer);
 
+    // Clean up trailing '?' from baseUrl before appending new params
+    if (baseUrl.endsWith('?')) baseUrl = baseUrl.slice(0, -1);
     const separator = baseUrl.includes('?') ? '&' : '?';
     return `${baseUrl}${separator}${params.toString()}`;
 }

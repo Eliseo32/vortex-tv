@@ -21,7 +21,7 @@ import {
 import TvFocusable from './TvFocusable';
 
 // ─── Tokens ──────────────────────────────────────────────────────────────────
-const ACCENT = '#FACC15';
+const ACCENT = '#B026FF';
 const ACCENT_DIM = 'rgba(250,204,21,0.12)';
 const ACCENT_BORDER = 'rgba(250,204,21,0.3)';
 const BG_OVERLAY = 'rgba(0,0,0,0.55)';
@@ -298,6 +298,20 @@ export default function TvPlayerOverlay({
                 style={[StyleSheet.absoluteFillObject, styles.overlay, { opacity: controlsOpacity }]}
                 pointerEvents={showControls ? 'box-none' : 'none'}
             >
+                {/* ── SCRIM SUPERIOR: negro→transparente ─────────────────────────── */}
+                <View pointerEvents="none" style={{
+                    position: 'absolute', top: 0, left: 0, right: 0, height: 200,
+                    backgroundColor: 'rgba(0,0,0,0)',
+                    // Fallback: oscuro en la parte superior
+                    borderTopLeftRadius: 0,
+                }} >
+                    {/* Capa full opaca arriba */}
+                    <View style={{ height: 90, backgroundColor: 'rgba(0,0,0,0.75)' }} />
+                    {/* Capa semitransparente */}
+                    <View style={{ height: 60, backgroundColor: 'rgba(0,0,0,0.40)' }} />
+                    {/* Capa casi transparente */}
+                    <View style={{ height: 50, backgroundColor: 'rgba(0,0,0,0.12)' }} />
+                </View>
                 {/* ── TOP BAR: Título + Volver ─────────────────────────── */}
                 <View style={styles.topBar}>
                     {onBack && (
@@ -329,7 +343,15 @@ export default function TvPlayerOverlay({
                 {!isLive && (
                     <View style={styles.progressArea}>
                         <View style={styles.progressBg}>
-                            <View style={[styles.progressFg, { width: `${progress}%`, backgroundColor: accent }]} />
+                            <View style={[styles.progressFg, { width: `${progress}%` as any, backgroundColor: accent }]}>
+                                {/* Scrubber dot al final del fill */}
+                                <View style={{
+                                    position: 'absolute', right: -6, top: -5,
+                                    width: 14, height: 14, borderRadius: 7,
+                                    backgroundColor: accent,
+                                    shadowColor: accent, shadowOpacity: 0.8, shadowRadius: 6, elevation: 6,
+                                }} />
+                            </View>
                         </View>
                         <View style={styles.timeRow}>
                             <Text style={styles.timeText}>{formatTime(currentTime)}</Text>
@@ -392,26 +414,26 @@ export default function TvPlayerOverlay({
                             </TvFocusable>
                         </View>
 
-                        <TvFocusable onPress={() => handleSelectQuality('auto')} scaleTo={1.04} borderWidth={0}
+                        <TvFocusable onPress={() => handleSelectQuality('auto')} scaleTo={1.02} borderWidth={0}
                             hasTVPreferredFocus style={styles.qualityRow} focusedStyle={{ backgroundColor: 'transparent' }}>
                             {(f: boolean) => (
-                                <View style={[styles.qualityInner, f && { backgroundColor: accent, borderColor: accent }]}>
-                                    <Text style={[styles.qualityLabel, f && { color: '#000' }]}>⚡ Automático (ABR)</Text>
+                                <View style={[styles.qualityInner, f && { backgroundColor: '#1a1d24', borderLeftWidth: 3, borderLeftColor: accent }]}>
+                                    <Text style={[styles.qualityLabel, f && { color: accent }]}>⚡ Automático (ABR)</Text>
                                 </View>
                             )}
                         </TvFocusable>
 
                         {qualityLevels.map((q) => (
-                            <TvFocusable key={q.index} onPress={() => handleSelectQuality(q.index)} scaleTo={1.04} borderWidth={0}
+                            <TvFocusable key={q.index} onPress={() => handleSelectQuality(q.index)} scaleTo={1.02} borderWidth={0}
                                 style={styles.qualityRow} focusedStyle={{ backgroundColor: 'transparent' }}>
                                 {(f: boolean) => (
                                     <View style={[
                                         styles.qualityInner,
-                                        f && { backgroundColor: accent, borderColor: accent },
-                                        q.active && !f && { borderColor: accent, borderWidth: 2 }
+                                        f && { backgroundColor: '#1a1d24', borderLeftWidth: 3, borderLeftColor: accent },
+                                        q.active && !f && { borderLeftWidth: 3, borderLeftColor: `${accent}60` }
                                     ]}>
-                                        <Text style={[styles.qualityLabel, f && { color: '#000' }]}>{q.label}</Text>
-                                        {q.active && !f && <Check color={accent} size={18} />}
+                                        <Text style={[styles.qualityLabel, f && { color: accent }]}>{q.label}</Text>
+                                        {q.active && <Check color={accent} size={18} />}
                                     </View>
                                 )}
                             </TvFocusable>
@@ -511,112 +533,242 @@ export function handleOverlayMessage(
     }
 }
 
-// ─── Estilos ──────────────────────────────────────────────────────────────────
+// ─── Estilos ──────────────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
+    // Overlay wrapper
     overlay: {
         zIndex: 9999,
         justifyContent: 'space-between',
-        paddingTop: 20,
-        paddingBottom: 0,
     },
 
-    // Top bar
+    // ── TOP BAR ───────────────────────────────────────────────────────────────────────
     topBar: {
-        flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: 40, paddingTop: 10, paddingBottom: 16,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        gap: 14,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 44,
+        paddingTop: 28,
+        paddingBottom: 56,
+        backgroundColor: 'transparent',
+        gap: 16,
     },
     backBtn: {
-        borderRadius: 24, padding: 12,
-        backgroundColor: 'rgba(255,255,255,0.07)',
+        borderRadius: 12,
+        padding: 10,
+        backgroundColor: 'rgba(255,255,255,0.09)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.10)',
     },
     backBtnFocused: {
-        backgroundColor: 'rgba(255,255,255,0.18)',
-        borderWidth: 2, borderColor: '#FACC15',
+        backgroundColor: 'rgba(250,204,21,0.18)',
+        borderWidth: 2,
+        borderColor: '#B026FF',
+        shadowColor: '#B026FF',
+        shadowOpacity: 0.5,
+        shadowRadius: 10,
+        elevation: 6,
     },
-    titleBlock: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
-    titleText: { color: '#fff', fontSize: 18, fontWeight: '900', letterSpacing: 0.2 },
+    titleBlock: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 14,
+    },
+    titleText: {
+        color: '#FFFFFF',
+        fontSize: 20,
+        fontWeight: '900',
+        letterSpacing: 0.3,
+        textShadowColor: 'rgba(0,0,0,0.8)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 4,
+    },
     liveBadge: {
-        flexDirection: 'row', alignItems: 'center', gap: 5,
-        paddingHorizontal: 10, paddingVertical: 4,
-        borderRadius: 6, borderWidth: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 7,
+        borderWidth: 1,
     },
-    liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#ef4444' },
-    liveText: { color: '#ef4444', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
+    liveDot: {
+        width: 7,
+        height: 7,
+        borderRadius: 4,
+        backgroundColor: '#ef4444',
+    },
+    liveText: {
+        color: '#ef4444',
+        fontSize: 10,
+        fontWeight: '900',
+        letterSpacing: 1.2,
+    },
     topBtn: {
-        borderRadius: 20, padding: 10,
-        backgroundColor: 'rgba(255,255,255,0.07)',
+        borderRadius: 12,
+        padding: 10,
+        backgroundColor: 'rgba(255,255,255,0.09)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.10)',
     },
     topBtnFocused: {
-        backgroundColor: 'rgba(255,255,255,0.18)',
-        borderWidth: 2, borderColor: '#FACC15',
+        backgroundColor: 'rgba(250,204,21,0.18)',
+        borderWidth: 2,
+        borderColor: '#B026FF',
+        elevation: 6,
     },
 
-    // Progress
+    // ── PROGRESS BAR ───────────────────────────────────────────────────────────────
     progressArea: {
         paddingHorizontal: 56,
-        backgroundColor: 'rgba(0,0,0,0.35)',
-        paddingBottom: 6,
+        paddingBottom: 10,
+        paddingTop: 6,
     },
     progressBg: {
-        width: '100%', height: 5,
-        backgroundColor: 'rgba(255,255,255,0.15)',
-        borderRadius: 3, overflow: 'hidden',
+        width: '100%',
+        height: 5,
+        backgroundColor: 'rgba(255,255,255,0.18)',
+        borderRadius: 4,
+        overflow: 'visible',
+        position: 'relative',
     },
-    progressFg: { height: '100%', borderRadius: 3 },
-    timeRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
-    timeText: { color: '#fff', fontSize: 13, fontWeight: '800', letterSpacing: 0.8 },
+    progressFg: {
+        height: '100%',
+        borderRadius: 4,
+        // Scrubber dot se agrega via View posicionado relativo en JSX
+    },
+    timeRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: 10,
+    },
+    timeText: {
+        color: 'rgba(255,255,255,0.85)',
+        fontSize: 13,
+        fontWeight: '800',
+        letterSpacing: 0.6,
+    },
 
-    // Bottom
+    // ── BOTTOM BAR (frosted glass) ───────────────────────────────────────────────
     bottomBar: {
-        flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
-        gap: 24, paddingHorizontal: 60, paddingVertical: 24,
-        backgroundColor: 'rgba(0,0,0,0.6)',
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 16,
+        paddingHorizontal: 60,
+        paddingVertical: 22,
+        paddingBottom: 30,
+        backgroundColor: 'rgba(0,0,0,0.70)',
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.07)',
     },
-    rightBtns: { flexDirection: 'row', gap: 14, marginLeft: 20 },
+    rightBtns: {
+        flexDirection: 'row',
+        gap: 10,
+        marginLeft: 24,
+        alignItems: 'center',
+    },
 
-    // Buttons
+    // ── BUTTONS ───────────────────────────────────────────────────────────────────────
     ctrlBtn: {
-        borderRadius: 36, padding: 14,
-        backgroundColor: BTN_BG,
+        borderRadius: 14,
+        width: 54,
+        height: 54,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.10)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
     },
     ctrlBtnFocused: {
-        backgroundColor: BTN_FOCUSED,
-        borderWidth: 2, borderColor: '#FACC15',
+        backgroundColor: 'rgba(250,204,21,0.15)',
+        borderWidth: 2,
+        borderColor: '#B026FF',
+        shadowColor: '#B026FF',
+        shadowOpacity: 0.6,
+        shadowRadius: 12,
+        elevation: 8,
     },
     playBtn: {
-        borderRadius: 60, padding: 20,
+        borderRadius: 18,
+        width: 76,
+        height: 76,
+        alignItems: 'center',
+        justifyContent: 'center',
         backgroundColor: ACCENT_DIM,
-        borderWidth: 3, borderColor: ACCENT_BORDER,
+        borderWidth: 2,
+        borderColor: ACCENT_BORDER,
     },
     playBtnFocused: {
-        borderWidth: 3,
+        backgroundColor: 'rgba(250,204,21,0.22)',
+        borderWidth: 2.5,
+        shadowColor: '#B026FF',
+        shadowOpacity: 0.7,
+        shadowRadius: 18,
+        elevation: 12,
     },
-    playBtnInner: { alignItems: 'center', justifyContent: 'center' },
+    playBtnInner: {
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
 
-    // Modal
+    // ── MODALS ─────────────────────────────────────────────────────────────────────────
     modalBg: {
-        flex: 1, backgroundColor: 'rgba(0,0,0,0.85)',
-        alignItems: 'center', justifyContent: 'center',
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.82)',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     modalCard: {
-        width: 400, backgroundColor: '#0f0f14',
-        borderRadius: 22, padding: 28,
-        borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
-        elevation: 24,
+        width: 420,
+        backgroundColor: '#0d0f14',
+        borderRadius: 20,
+        padding: 0,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.10)',
+        overflow: 'hidden',
+        elevation: 28,
+        shadowColor: '#000',
+        shadowOpacity: 0.7,
+        shadowRadius: 30,
     },
     modalHeader: {
-        flexDirection: 'row', alignItems: 'center',
-        justifyContent: 'space-between', marginBottom: 20,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 24,
+        paddingVertical: 20,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.07)',
+        // Accent izquierdo
+        borderLeftWidth: 3,
+        borderLeftColor: '#B026FF',
     },
-    modalTitle: { color: '#fff', fontSize: 20, fontWeight: '900' },
-    qualityRow: { borderRadius: 12, marginBottom: 8 },
+    modalTitle: {
+        color: '#FFFFFF',
+        fontSize: 18,
+        fontWeight: '900',
+        letterSpacing: 0.5,
+    },
+    qualityRow: {
+        borderRadius: 0,
+        marginBottom: 0,
+    },
     qualityInner: {
-        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-        paddingHorizontal: 16, paddingVertical: 14, borderRadius: 12,
-        backgroundColor: '#18181b', borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 24,
+        paddingVertical: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.05)',
+        backgroundColor: 'transparent',
+        borderRadius: 0,
+        borderWidth: 0,
     },
-    qualityLabel: { color: '#fff', fontSize: 15, fontWeight: '800' },
+    qualityLabel: {
+        color: 'rgba(255,255,255,0.85)',
+        fontSize: 15,
+        fontWeight: '700',
+        letterSpacing: 0.2,
+    },
 });
