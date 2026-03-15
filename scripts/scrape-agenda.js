@@ -46,6 +46,29 @@ const db = getFirestore();
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const logoCache = {};
 
+// ─── Timezone Argentina (UTC-3, sin cambio de horario) ───────────────────────
+// GitHub Actions corre en UTC. Argentina es UTC-3 fijo.
+const AR_OFFSET_MS = -3 * 60 * 60 * 1000;
+
+function nowAR() {
+    return new Date(Date.now() + AR_OFFSET_MS);
+}
+
+/** Devuelve la fecha de hoy en Argentina: "2025-03-15" */
+function todayAR() {
+    const d = nowAR();
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+/** Devuelve hora y fecha locales en Argentina para logs */
+function logDateAR() {
+    const d = nowAR();
+    return d.toUTCString().replace('GMT', 'ART (-3)');
+}
+
 // TheSportsDB: obtiene el escudo de un equipo
 async function fetchLogo(name) {
     const encoded = encodeURIComponent(name);
@@ -112,7 +135,7 @@ function getSportIcon(category = '', league = '') {
 
 // ─── Limpia la agenda del día ─────────────────────────────────────────────────
 async function clearTodayAgenda() {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayAR();
     const snapshot = await db.collection('agenda').where('date', '==', today).get();
     if (!snapshot.empty) {
         const batch = db.batch();
@@ -207,7 +230,7 @@ async function fetchManualEvents() {
 // ─── Función principal ────────────────────────────────────────────────────────
 async function main() {
     console.log('🚀 Iniciando scraper de agenda — VortexTV (AngulismoTV)');
-    console.log(`📅 Fecha: ${new Date().toLocaleDateString('es-AR')}`);
+    console.log(`📅 Fecha Argentina: ${todayAR()} — ${logDateAR()}`);
 
     // 1. Obtener eventos de ambas fuentes
     const [autoEvents, manualEvents] = await Promise.all([
@@ -246,7 +269,7 @@ async function main() {
     await clearTodayAgenda();
 
     // 4. Procesar cada evento
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayAR();
     const batch = db.batch();
     let processed = 0;
 
