@@ -69,6 +69,20 @@ function logDateAR() {
     return d.toUTCString().replace('GMT', 'ART (-3)');
 }
 
+/**
+ * Suma horas a un string "HH:MM".
+ * La API de angulismotv devuelve los horarios en UTC-5 (Colombia/México).
+ * Argentina es UTC-3  →  hay que sumar +2 horas.
+ */
+function addHoursToTime(timeStr, hours) {
+    if (!timeStr || !timeStr.includes(':')) return timeStr;
+    const [h, m] = timeStr.split(':').map(Number);
+    const total = h + hours;
+    const newH = ((total % 24) + 24) % 24; // wrap around midnight
+    return `${String(newH).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+const API_TO_AR_OFFSET = 2; // API en UTC-5, Argentina UTC-3 → +2h
 // TheSportsDB: obtiene el escudo de un equipo
 async function fetchLogo(name) {
     const encoded = encodeURIComponent(name);
@@ -188,7 +202,10 @@ async function fetchAutoEvents() {
         grouped[key].servers.push(ev.link);
     }
 
-    return Object.values(grouped);
+    return Object.values(grouped).map(ev => ({
+        ...ev,
+        time: addHoursToTime(ev.time, API_TO_AR_OFFSET),
+    }));
 }
 
 // ─── Fuente 2: Eventos manuales (euents) ─────────────────────────────────────
@@ -218,7 +235,7 @@ async function fetchManualEvents() {
         }
         return {
             title: ev.evento || '',
-            time: ev.fecha ? ev.fecha.split(' ')[1]?.slice(0, 5) : '',
+            time: addHoursToTime(ev.fecha ? ev.fecha.split(' ')[1]?.slice(0, 5) : '', API_TO_AR_OFFSET),
             category: ev.competencia || 'Other',
             status: 'programado',
             servers,
