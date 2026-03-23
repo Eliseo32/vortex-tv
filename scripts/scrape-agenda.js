@@ -244,22 +244,67 @@ async function fetchManualEvents() {
     }).filter(ev => ev.title && ev.servers.length > 0);
 }
 
+// ─── Fuente 3: Eventos la14HD ─────────────────────────────────────────────────
+async function fetchLa14HDEvents() {
+    console.log('\n📡 Fuente 3: la14hd.angulismotv.workers.dev/eventos/json/agenda123.json');
+    const res = await fetchWithRetry('https://la14hd.angulismotv.workers.dev/eventos/json/agenda123.json');
+    if (!res) {
+        console.warn('⚠️  No se pudo obtener eventos de la14HD');
+        return [];
+    }
+    const data = await res.json();
+    console.log(`   ✅ ${data.length} filas encontradas (la14HD)`);
+
+    // Agrupar por título para combinar servidores del mismo partido
+    const grouped = {};
+    for (const ev of data) {
+        if (!ev.title || !ev.link) continue;
+        const key = ev.title.toLowerCase().trim();
+        if (!grouped[key]) {
+            grouped[key] = {
+                title: ev.title,
+                time: ev.time || '',
+                category: ev.category || 'Other',
+                status: ev.status || 'programado',
+                servers: [],
+            };
+        }
+        grouped[key].servers.push(ev.link);
+    }
+
+    return Object.values(grouped).map(ev => ({
+        ...ev,
+        time: addHoursToTime(ev.time, API_TO_AR_OFFSET),
+    }));
+}
+
 // ─── Función principal ────────────────────────────────────────────────────────
 async function main() {
     console.log('🚀 Iniciando scraper de agenda — VortexTV (AngulismoTV)');
     console.log(`📅 Fecha Argentina: ${todayAR()} — ${logDateAR()}`);
 
-    // 1. Obtener eventos de ambas fuentes
-    const [autoEvents, manualEvents] = await Promise.all([
+    // 1. Obtener eventos de las tres fuentes
+    const [autoEvents, manualEvents, la14Events] = await Promise.all([
         fetchAutoEvents(),
         fetchManualEvents(),
+        fetchLa14HDEvents(),
     ]);
 
-    // 2. Combinar y deduplicar (manuales tienen prioridad)
+    // 2. Combinar y deduplicar (manuales tienen prioridad, luego la14HD, luego auto)
     const allMap = new Map();
     for (const ev of autoEvents) {
         const key = ev.title.toLowerCase().trim();
         allMap.set(key, { ...ev, source: 'auto' });
+    }
+    for (const ev of la14Events) {
+        const key = ev.title.toLowerCase().trim();
+        if (allMap.has(key)) {
+            const existing = allMap.get(key);
+            existing.servers = [...new Set([...ev.servers, ...existing.servers])];
+            existing.source = 'combined';
+        } else {
+            allMap.set(key, { ...ev, source: 'la14hd' });
+        }
     }
     for (const ev of manualEvents) {
         const key = ev.title.toLowerCase().trim();
