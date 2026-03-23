@@ -10,17 +10,20 @@ import ProfileScreen from '../screens/auth/ProfileScreen';
 import TvHomeScreen from '../screens/tv/TvHomeScreen';
 import TvDetailScreen from '../screens/tv/TvDetailScreen';
 import TvPlayerScreen from '../screens/tv/TvPlayerScreen';
+import TvLiveScreen from '../screens/tv/TvLiveScreen';
+import TvSportsScreen from '../screens/tv/TvSportsScreen';
 // 🔥 IMPORTAMOS LAS NUEVAS PANTALLAS DE PARTY
 import TvPartySetupScreen from '../screens/tv/TvPartySetupScreen';
 import TvPartyPlayerScreen from '../screens/tv/TvPartyPlayerScreen';
 import TvSportsPlayerScreen from '../screens/tv/TvSportsPlayerScreen';
 import TvDrmPlayerScreen from '../screens/tv/TvDrmPlayerScreen';
 import TvF1TelemetryScreen from '../screens/tv/TvF1TelemetryScreen';
+import TvChannelPlayerScreen from '../screens/tv/TvChannelPlayerScreen';
 
 const Stack = createNativeStackNavigator();
 
 export default function AppNavigator() {
-  const { currentProfile, setUserId } = useAppStore();
+  const { currentProfile, setUserId, fetchCloudContent } = useAppStore();
   const [user, setUser] = useState<any>(null);
   const [loadingInitial, setLoadingInitial] = useState(true);
 
@@ -29,6 +32,8 @@ export default function AppNavigator() {
       setUser(firebaseUser);
       if (firebaseUser) {
         setUserId(firebaseUser.uid);
+        // Cargar catálogo al iniciar sesión (sin caché)
+        fetchCloudContent();
       } else {
         setUserId(null);
       }
@@ -56,6 +61,8 @@ export default function AppNavigator() {
           <Stack.Screen name="MainTV" component={TvHomeScreen} />
           <Stack.Screen name="DetailTV" component={TvDetailScreen} options={{ animation: 'fade' }} />
           <Stack.Screen name="PlayerTV" component={TvPlayerScreen} options={{ animation: 'fade' }} />
+          <Stack.Screen name="LiveCategoryTV" component={TvLiveScreen} options={{ animation: 'fade' }} />
+          <Stack.Screen name="SportsTV" component={TvSportsScreen} options={{ animation: 'fade' }} />
 
           {/* 🔥 REGISTRAMOS LAS RUTAS FALTANTES AQUÍ */}
           <Stack.Screen name="PartySetup" component={TvPartySetupScreen} options={{ animation: 'fade' }} />
@@ -63,6 +70,7 @@ export default function AppNavigator() {
           <Stack.Screen name="SportsPlayerTV" component={TvSportsPlayerScreen} options={{ animation: 'fade' }} />
           <Stack.Screen name="DrmPlayerTV" component={TvDrmPlayerScreen} options={{ animation: 'fade' }} />
           <Stack.Screen name="F1TelemetryTV" component={TvF1TelemetryScreen} options={{ animation: 'fade' }} />
+          <Stack.Screen name="ChannelPlayerTV" component={TvChannelPlayerScreen} options={{ animation: 'fade' }} />
         </Stack.Group>
       )}
     </Stack.Navigator>

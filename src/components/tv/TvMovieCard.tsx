@@ -1,5 +1,11 @@
+/**
+ * TvMovieCard — Card cinemática premium, estilo Aura Cinematic / Stitch mockup.
+ * Estructura: View contenedor con dimensiones fijas → imagen absolute →
+ * gradiente inferior → metadata (tipo, título, año, rating, género).
+ */
 import React, { useCallback } from 'react';
 import { View, Image, Text, StyleSheet } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import TvFocusable from './TvFocusable';
 
 interface TvMovieCardProps {
@@ -15,76 +21,143 @@ function TvMovieCard({
   item,
   onPress,
   onFocusItem,
-  accentColor = '#B026FF',
-  width = 120,
-  height = 180,
+  accentColor = '#b6a0ff',
+  width = 180,
+  height = 260,
 }: TvMovieCardProps) {
   const handleFocus = useCallback(() => {
     if (onFocusItem) onFocusItem(item);
   }, [item, onFocusItem]);
 
+  const typeLabel =
+    item.type === 'movie'  ? 'FILM'   :
+    item.type === 'series' ? 'SERIES' :
+    item.type === 'anime'  ? 'ANIME'  :
+    item.type === 'tv'     ? 'LIVE'   : '';
+
   return (
-    <View style={styles.container}>
-      <TvFocusable
-        onPress={onPress}
-        onFocus={handleFocus}
-        scaleTo={1.12}
-        style={[styles.card, { width, height }]}
-      >
-        {(focused: boolean) => (
-          <>
-            <Image
-              source={{ uri: item.poster, cache: 'force-cache' }}
-              style={styles.poster}
-              resizeMode="cover"
+    <TvFocusable
+      onPress={onPress}
+      onFocus={handleFocus}
+      scaleTo={1.08}
+      style={{ marginHorizontal: 8, marginVertical: 8, borderRadius: 14 }}
+      borderWidth={0}
+    >
+      {(focused: boolean) => (
+        // ← View con dimensiones explícitas — IMPRESCINDIBLE para que
+        //   la Image en position:absolute y el gradiente se vean
+        <View style={[styles.card, { width, height }]}>
+          {/* Poster como background */}
+          <Image
+            source={{ uri: item.poster }}
+            style={StyleSheet.absoluteFillObject}
+            resizeMode="cover"
+          />
+
+          {/* Gradiente inferior para legibilidad */}
+          <LinearGradient
+            colors={['transparent', 'rgba(12,14,23,0.55)', 'rgba(12,14,23,0.97)']}
+            start={{ x: 0, y: 0.35 }}
+            end={{ x: 0, y: 1 }}
+            style={StyleSheet.absoluteFillObject}
+          />
+
+          {/* Borde coloreado al hacer foco */}
+          {focused && (
+            <View
+              style={[
+                StyleSheet.absoluteFillObject,
+                { borderRadius: 14, borderWidth: 2.5, borderColor: accentColor },
+              ]}
             />
+          )}
 
-            {!focused && <View style={styles.dimOverlay} />}
+          {/* Badge de tipo — top-left */}
+          <View
+            style={[
+              styles.typeBadge,
+              { backgroundColor: focused ? accentColor : 'rgba(12,14,23,0.75)' },
+            ]}
+          >
+            <Text style={[styles.typeBadgeText, { color: focused ? '#000' : '#aaaab7' }]}>
+              {typeLabel}
+            </Text>
+          </View>
 
-            {focused && (
-              <View style={[styles.focusBorder, { borderColor: accentColor }]} />
-            )}
+          {/* Metadata — bottom */}
+          <View style={styles.meta}>
+            <Text numberOfLines={2} style={[styles.title, focused && { color: '#fff' }]}>
+              {item.title}
+            </Text>
 
-            {item.type === 'tv' && (
-              <View style={styles.liveBadge}>
-                <Text style={styles.liveBadgeText}>EN VIVO</Text>
-              </View>
-            )}
+            <View style={styles.metaRow}>
+              {item.year ? (
+                <Text style={styles.metaText}>{item.year}</Text>
+              ) : null}
+              {item.rating ? (
+                <>
+                  <Text style={styles.metaDot}>·</Text>
+                  <Text style={[styles.metaText, { color: accentColor }]}>
+                    {item.rating}
+                  </Text>
+                </>
+              ) : null}
+            </View>
 
-            {item.rating && focused && (
-              <View style={styles.ratingBadge}>
-                <Text style={styles.ratingText}>⭐ {item.rating}</Text>
-              </View>
-            )}
-          </>
-        )}
-      </TvFocusable>
-    </View>
+            {item.genre ? (
+              <Text numberOfLines={1} style={styles.genre}>
+                {String(item.genre).split(',')[0].trim()}
+              </Text>
+            ) : null}
+          </View>
+        </View>
+      )}
+    </TvFocusable>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { marginHorizontal: 8, marginVertical: 12 },
-  card: { overflow: 'hidden', backgroundColor: '#111', borderRadius: 10 },
-  poster: { width: '100%', height: '100%', position: 'absolute' },
-  dimOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.28)' },
-  focusBorder: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 10, borderWidth: 2 },
-  liveBadge: {
-    position: 'absolute', top: 8, right: 8,
-    backgroundColor: 'rgba(220,38,38,0.9)',
-    paddingHorizontal: 6, paddingVertical: 3,
-    borderRadius: 4, borderWidth: 1, borderColor: 'rgba(239,68,68,0.5)',
+  card: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: '#0c0e17',
   },
-  liveBadgeText: { color: '#fff', fontSize: 8, fontWeight: '900', letterSpacing: 1.2, textTransform: 'uppercase' },
-  ratingBadge: {
-    position: 'absolute', bottom: 8, left: 8,
-    backgroundColor: 'rgba(0,0,0,0.75)',
-    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4,
+  typeBadge: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 4,
   },
-  ratingText: { color: '#B026FF', fontSize: 9, fontWeight: '800' },
+  typeBadgeText: {
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+  },
+  meta: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 10,
+  },
+  title: {
+    color: '#f0f0fd',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+    marginBottom: 4,
+    lineHeight: 14,
+  },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 },
+  metaText: { color: '#aaaab7', fontSize: 9, fontWeight: '700' },
+  metaDot: { color: '#aaaab7', fontSize: 9 },
+  genre: { color: '#737580', fontSize: 8, fontWeight: '600', letterSpacing: 0.5 },
 });
 
-// Memoize: only re-render if item.id or accentColor changes
-export default React.memo(TvMovieCard, (prev, next) => {
-  return prev.item.id === next.item.id && prev.accentColor === next.accentColor && prev.width === next.width;
-});
+export default React.memo(TvMovieCard, (prev, next) =>
+  prev.item.id === next.item.id &&
+  prev.accentColor === next.accentColor &&
+  prev.width === next.width,
+);

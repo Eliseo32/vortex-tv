@@ -1,15 +1,241 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { View, ActivityIndicator, BackHandler, Text, StyleSheet, Animated, Modal } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { AlertCircle } from 'lucide-react-native';
+import { AlertCircle, SkipForward } from 'lucide-react-native';
 import Video from 'react-native-video';
 import { Buffer } from 'buffer';
 import TvFocusable from '../../components/tv/TvFocusable';
-import TvPlayerOverlay, { handleOverlayMessage, QualityLevel } from '../../components/tv/TvPlayerOverlay';
+import TvContentOverlay from '../../components/tv/TvContentOverlay';
 import F1TelemetrySidePanel from '../../components/tv/F1TelemetrySidePanel';
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+// ══════════════════════════════════════════════════════════════════════════
+// ── MODULE-LEVEL JS CONSTANTS (allocated once, not per render) ──────────
+// ══════════════════════════════════════════════════════════════════════════
+const AD_BLOCKER_JS = `
+(function () {
+  var AD_DOMAINS = [
+      'doubleclick', 'googlesyndication', 'adnxs', 'popads', 'popcash',
+      'adcash', 'exoclick', 'juicyads', 'trafficjunky',
+      'propellerads', 'adsterra', 'hilltopads', 'monetag', 'revcontent',
+      'taboola', 'outbrain', 'mgid', 'bidverdane', 'adspyglass', 'richads',
+      'eroadvertising', 'plugrush', 'adskeeper', 'adhitz', 'viraltrend',
+      'popunder', 'pounder', 'clkqw', 'clkrev', 'linkvertise', 'shortlink',
+      'clicksfly', 'shrinkearn', 'gplinks', 'ouo.io', 'exe.io', 'fc.lc',
+      'fir.pw', 'bcvc.net', 'shrink', 'adf.ly', 'ay.gy', 'cur.lv',
+  ];
+  // Dominios de CDN/player que NUNCA debemos bloquear
+  var SAFE_DOMAINS = ['jwplayer', 'jwpcdn', 'jwpsrv', 'shaka', 'dashjs', 'hls.js', 'videojs',
+      'cvattv', 'castercdn', 'nebunexa', 'cdn.', 'edge-live', 'akamai', 'cloudfront'];
+  function isAd(u) {
+      if (SAFE_DOMAINS.some(function(d){ return u.includes(d); })) return false;
+      return AD_DOMAINS.some(function(d){ return u.includes(d); });
+  }
+  var _fetch = window.fetch;
+  window.fetch = function(url, opts) {
+      var u = String(url || '').toLowerCase();
+      if (isAd(u)) return Promise.reject(new Error('AD_BLOCKED'));
+      return _fetch.apply(this, arguments);
+  };
+  var _open = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url) {
+      var u = String(url || '').toLowerCase();
+      if (isAd(u)) this._blocked = true;
+      return _open.apply(this, arguments);
+  };
+  var _send = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.send = function() {
+      if (this._blocked) return;
+      return _send.apply(this, arguments);
+  };
+  var _ac = Node.prototype.appendChild;
+  Node.prototype.appendChild = function(el) {
+      if (el && el.tagName === 'SCRIPT') { var src = (el.src || '').toLowerCase(); if (isAd(src)) return el; }
+      if (el && el.tagName === 'IFRAME') { var src2 = (el.src || '').toLowerCase(); if (isAd(src2)) return el; }
+      return _ac.apply(this, arguments);
+  };
+  var _ip = Element.prototype.insertAdjacentHTML;
+  Element.prototype.insertAdjacentHTML = function(pos, html) {
+      var h = String(html || '').toLowerCase();
+      if (isAd(h)) return;
+      return _ip.apply(this, arguments);
+  };
+  window.open = function() { return null; };
+  window.alert = function() { return true; };
+  window.confirm = function() { return true; };
+  window.prompt = function() { return ''; };
+  var _dw = document.write.bind(document);
+  document.write = function(html) {
+      var h = String(html || '').toLowerCase();
+      if (isAd(h)) return;
+      return _dw(html);
+  };
+})(); true;
+`;
+
+const AFTER_LOAD_JS = `
+(function () {
+  document.body.style.backgroundColor = '#000'; document.body.style.overflow = 'hidden';
+  var notified = false, attempts = 0, interval;
+  var videoListenersAttached = false;
+
+  // Detectar si hay un reproductor embebido manejado (JW Player, video.js, Shaka, etc.)
+  function hasManagedPlayer() {
+      return !!(window.jwplayer || document.querySelector('.jwplayer, .jw-wrapper, [class*="jw-"], .video-js, .vjs-tech, .shaka-video-container'));
+  }
+
+  // Selectores de ads seguros (no interfieren con reproductores)
+  var SAFE_AD_SELECTORS = [
+      '[id*="popup"]', '[class*="popup"]',
+      '[class*="banner"]:not(.jw-banner)', '[id*="banner"]', '[class*="promo"]',
+      '[data-ad]', 'ins.adsbygoogle',
+      '.adbanner', '.adbox', '.ad-slot', '.ad-container',
+      'div[class*="monetag"]', 'div[class*="adsense"]',
+  ];
+
+  // Selectores agresivos (solo para sitios sin reproductor embebido)
+  var AGGRESSIVE_AD_SELECTORS = [
+      '[id*="ad"]', '[class*="ad-"]', '[class*="-ad"]', '[class*="ads"]',
+      '[class*="overlay"]',
+      'div[style*="z-index: 9"]',
+      '.vd-overlay', '.vd-popup', '#wad-leader-board', '#aswift_',
+  ];
+
+  function removeAds() {
+      var managed = hasManagedPlayer();
+      var selectors = SAFE_AD_SELECTORS.slice();
+      if (!managed) { selectors = selectors.concat(AGGRESSIVE_AD_SELECTORS); }
+      selectors.forEach(function(sel) {
+          try {
+              document.querySelectorAll(sel).forEach(function(el) {
+                  var v = el.querySelector('video');
+                  var iframe = el.querySelector('iframe');
+                  if (!v && !iframe) { try { el.remove(); } catch(e) {} }
+              });
+          } catch(e) {}
+      });
+      if (!managed) {
+          document.querySelectorAll('iframe').forEach(function(f, i) {
+              if (i === 0) return;
+              var src = (f.src || '').toLowerCase();
+              var adDomains = ['ads', 'popup', 'popunder', 'monetag', 'exoclick', 'adsterra', 'propellerads', 'adcash'];
+              if (adDomains.some(function(d){ return src.includes(d); })) { try { f.remove(); } catch(e) {} }
+          });
+          document.querySelectorAll('div, a').forEach(function(el) {
+              if (el.tagName === 'VIDEO' || el.tagName === 'IFRAME') return;
+              var st = window.getComputedStyle(el);
+              var z = parseInt(st.zIndex || '0');
+              if ((st.position === 'fixed' || st.position === 'absolute') && z > 1000) {
+                  var hasVideo = el.querySelector('video, iframe');
+                  if (!hasVideo) try { el.remove(); } catch(e) {}
+              }
+          });
+      }
+  }
+
+  // Adjuntar listeners de estado al elemento video (una sola vez)
+  function attachVideoListeners(video) {
+      if (videoListenersAttached || !video) return;
+      videoListenersAttached = true;
+      video.addEventListener('play', function() {
+          if (!notified) { notified = true; }
+          try { window.ReactNativeWebView.postMessage('video_playing'); } catch(e) {}
+      });
+      video.addEventListener('pause', function() {
+          // Solo reportar pausa si ya habiamos notificado el play (evita false positives al cargar)
+          if (notified) {
+            try { window.ReactNativeWebView.postMessage('video_paused'); } catch(e) {}
+          }
+      });
+      video.addEventListener('timeupdate', function() {
+          if (!notified && video.currentTime > 0.1) {
+              notified = true;
+              try { window.ReactNativeWebView.postMessage('video_playing'); } catch(e) {}
+          }
+      });
+  }
+
+  var tryPlay = function () {
+      attempts++;
+      // Dejar de intentar después de 60 intentos (48 segundos)
+      if (attempts > 60) { clearInterval(interval); return; }
+
+      removeAds();
+
+      var managed = hasManagedPlayer();
+      var video = document.querySelector('video');
+      var iframe = document.querySelector('iframe');
+
+      if (managed) {
+          // --- MANAGED PLAYER (JW Player, video.js, Shaka) ---
+          // Adjuntar listeners de estado al video (una sola vez)
+          if (video) attachVideoListeners(video);
+
+          // Notificar fallback después de 8 intentos si el video no arrancó
+          if (attempts > 8 && !notified) {
+              notified = true;
+              try { window.ReactNativeWebView.postMessage('video_playing'); } catch (e) { }
+          }
+
+          // Solo dar click al botón grande de play en los primeros 5 intentos
+          // (NO indefinidamente — evita el loop de pause/resume)
+          if (attempts <= 5) {
+              // Selectores específicos del big-play-button, NO '.play' (demasiado amplio)
+              var managedPlayBtns = ['.vjs-big-play-button', '.jw-icon-display', '.plyr__control--overlaid', '.voe-play', '.play-btn'];
+              managedPlayBtns.forEach(function(sel) { var b = document.querySelector(sel); if (b) try { b.click(); } catch(e){} });
+          }
+
+          // Si el video ya está reproduciendo, podemos limpiar el interval
+          if (video && !video.paused && video.currentTime > 0.1) {
+              clearInterval(interval);
+          }
+
+      } else {
+          // --- REGULAR SITE (sin managed player) ---
+          if (iframe && !video) { iframe.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:999999;background:#000;border:none;'; }
+          if (video) {
+              attachVideoListeners(video);
+              video.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:999999;object-fit:contain;background:#000;';
+              if (video.paused && attempts > 2) { video.muted = false; video.volume = 1; video.play().catch(function(){}); }
+              video.muted = false; video.volume = 1;
+              // Si el video ya está corriendo, detener el interval
+              if (!video.paused && video.currentTime > 0.1) { clearInterval(interval); }
+          }
+
+          // Click a botones de play específicos (solo primeros 5 intentos, sin '.play')
+          if (attempts <= 5) {
+              var playBtns = ['.vjs-big-play-button', '.jw-icon-display', '.plyr__control--overlaid', '.voe-play', '.play-btn'];
+              playBtns.forEach(function (sel) { var b = document.querySelector(sel); if (b) try { b.click(); } catch(e){} });
+          }
+
+          // Click al centro como fallback en intentos 4 y 8
+          if (attempts === 4 || attempts === 8) {
+              try { var centerEl = document.elementFromPoint(window.innerWidth/2, window.innerHeight/2);
+                  if(centerEl && centerEl.tagName !== 'VIDEO') centerEl.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true }));
+              } catch(e) {}
+          }
+      }
+  };
+  interval = setInterval(tryPlay, 800);
+
+  window.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.keyCode === 13 || e.keyCode === 66 || e.keyCode === 23) {
+      e.preventDefault(); e.stopImmediatePropagation();
+      try { window.ReactNativeWebView.postMessage('cmd_open_controls'); } catch (x) { }
+      var v = document.querySelector('video'); if (v) { if (v.paused) v.play(); else v.pause(); }
+    }
+  }, true);
+  window.addEventListener('keydown', function(e) {
+      if (e.keyCode === 37 || e.keyCode === 39) {
+          e.stopImmediatePropagation();
+          var v = document.querySelector('video'); if (v) v.currentTime += e.keyCode === 37 ? -10 : 10;
+      }
+  }, true);
+})();
+true;
+`;
 
 const formatTime = (seconds: number) => {
   if (!seconds || isNaN(seconds)) return '00:00';
@@ -24,10 +250,48 @@ export default function TvPlayerScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const webViewRef = useRef<WebView>(null);
-  const { videoUrl } = route.params;
+  const { videoUrl, seriesItem, season: routeSeason, episode: routeEpisode } = route.params;
+
+  // ── Series / Next Episode context ────────────────────────────────────────
+  const currentSeason: number | undefined = routeSeason;
+  const currentEpisode: number | undefined = routeEpisode;
+
+  // Compute the URL + metadata for the next episode (if applicable)
+  const getNextEpisodeData = useCallback((): { url: string; title: string; season: number; episode: number } | null => {
+    if (!seriesItem || currentSeason == null || currentEpisode == null) return null;
+    const item = seriesItem;
+
+    // Try same season, next episode
+    const currentSeasonData = item.seasonsData?.find((s: any) => s.season === currentSeason);
+    const nextEp = currentEpisode + 1;
+    if (currentSeasonData && nextEp <= currentSeasonData.episodes) {
+      const linksData = item.episodeLinks?.[`${currentSeason}-${nextEp}`];
+      const url = Array.isArray(linksData) ? linksData[0] : (typeof linksData === 'string' ? linksData : null)
+        || item.servers?.[0]?.url || item.videoUrl;
+      if (!url) return null;
+      return { url, title: `${item.title} - T${currentSeason} E${nextEp}`, season: currentSeason, episode: nextEp };
+    }
+
+    // Try next season episode 1
+    const nextSeason = currentSeason + 1;
+    const nextSeasonData = item.seasonsData?.find((s: any) => s.season === nextSeason);
+    if (nextSeasonData && nextSeasonData.episodes > 0) {
+      const linksData = item.episodeLinks?.[`${nextSeason}-1`];
+      const url = Array.isArray(linksData) ? linksData[0] : (typeof linksData === 'string' ? linksData : null)
+        || item.servers?.[0]?.url || item.videoUrl;
+      if (!url) return null;
+      return { url, title: `${item.title} - T${nextSeason} E1`, season: nextSeason, episode: 1 };
+    }
+
+    return null;
+  }, [seriesItem, currentSeason, currentEpisode]);
+
+  const nextEpisodeData = getNextEpisodeData();
 
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
+  const [nextEpDismissed, setNextEpDismissed] = useState(false);
+  const [nativeMode, setNativeMode] = useState(false);
 
   // ── Overlay State ─────────────────────────────────────────
   const [showControls, setShowControls] = useState(true);
@@ -40,9 +304,9 @@ export default function TvPlayerScreen() {
   // F1 PiP panel
   const [showF1Panel, setShowF1Panel] = useState(false);
 
-  // ── Quality State ─────────────────────────────────────────
+  // ── Quality State (unused, kept for Shaka compatibility) ───────────────────
   const [showQualityPicker, setShowQualityPicker] = useState(false);
-  const [qualityLevels, setQualityLevels] = useState<QualityLevel[]>([]);
+  const [qualityLevels, setQualityLevels] = useState<any[]>([]);
 
   // ── Normal WebView Overlay State ────────────────────────────────────────
   const [showWebControls, setShowWebControls] = useState(false);
@@ -330,21 +594,17 @@ export default function TvPlayerScreen() {
   // ══════════════════════════════════════════════════════════════════════════
   // ── MESSAGE HANDLER ───────────────────────────────────────────────────────
   // ══════════════════════════════════════════════════════════════════════════
-  const handleMessage = (event: any) => {
+  const handleMessage = useCallback((event: any) => {
     const msg: string = event.nativeEvent.data;
     if (msg === 'cmd_open_controls') {
-      resetControlsTimeout();
       setShowOverlayTrigger(t => t + 1);
     }
     if (msg.startsWith('dash_log:')) { console.log('[DashPlayer]', msg.replace('dash_log:', '')); return; }
-    handleOverlayMessage(msg, {
-      setCurrentTime,
-      setDuration,
-      setIsPaused,
-      setQualityLevels,
-      setIsPlaying: (v) => { if (v) setIsVideoPlaying(true); },
-    });
-  };
+    if (msg.startsWith('currentTime:')) { setCurrentTime(parseFloat(msg.replace('currentTime:', '')) || 0); return; }
+    if (msg.startsWith('duration:')) { setDuration(parseFloat(msg.replace('duration:', '')) || 0); return; }
+    if (msg === 'paused') { setIsPaused(true); return; }
+    if (msg === 'playing' || msg === 'video_playing') { setIsPaused(false); setIsVideoPlaying(true); }
+  }, []);
 
   // ── Effects ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -355,219 +615,78 @@ export default function TvPlayerScreen() {
   }, []);
 
   useEffect(() => {
-    const backAction = () => { navigation.goBack(); return true; };
+    const backAction = () => {
+      if (nativeMode) { setNativeMode(false); return true; }
+      navigation.goBack();
+      return true;
+    };
     const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
     return () => backHandler.remove();
-  }, [navigation]);
+  }, [navigation, nativeMode]);
 
   if (!cleanUrl) return <View style={{ flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' }}><AlertCircle color="#B026FF" size={64} /></View>;
 
   const isWaitScreenVisible = !isDash && !isDirectVideo && !isVideoPlaying;
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // ── AD BLOCKER + AFTER-LOAD JS ────────────────────────────────────────────
-  // ══════════════════════════════════════════════════════════════════════════
-  const adBlockerJS = `
-  (function () {
-    // ──────────────────── BLOQUEO DE SCRIPTS PUBLICITARIOSs ────────────────────
-    var AD_DOMAINS = [
-        'doubleclick', 'googlesyndication', 'adnxs', 'popads', 'popcash',
-        'vimeus', 'adcash', 'traffic', 'exoclick', 'juicyads', 'trafficjunky',
-        'propellerads', 'adsterra', 'hilltopads', 'monetag', 'revcontent',
-        'taboola', 'outbrain', 'mgid', 'bidverdane', 'adspyglass', 'richads',
-        'eroadvertising', 'plugrush', 'adskeeper', 'adhitz', 'viraltrend',
-        'popunder', 'pounder', 'clkqw', 'clkrev', 'linkvertise', 'shortlink',
-        'clicksfly', 'shrinkearn', 'gplinks', 'ouo.io', 'exe.io', 'fc.lc',
-        'fir.pw', 'bcvc.net', 'shrink', 'adf.ly', 'ay.gy', 'cur.lv',
-    ];
+  // Show "Next Episode" card when within 2 min of end (and there IS a next episode)
+  const isNearEnd = !!nextEpisodeData && !nextEpDismissed && duration > 30 && currentTime > 0 && (duration - currentTime) <= 120;
 
-    // Bloquear fetch
-    var _fetch = window.fetch;
-    window.fetch = function(url, opts) {
-        var u = String(url || '').toLowerCase();
-        if (AD_DOMAINS.some(function(d){ return u.includes(d); })) {
-            return Promise.reject(new Error('AD_BLOCKED'));
-        }
-        return _fetch.apply(this, arguments);
-    };
-
-    // Bloquear XMLHttpRequest
-    var _open = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function(method, url) {
-        var u = String(url || '').toLowerCase();
-        if (AD_DOMAINS.some(function(d){ return u.includes(d); })) {
-            this._blocked = true;
-        }
-        return _open.apply(this, arguments);
-    };
-    var _send = XMLHttpRequest.prototype.send;
-    XMLHttpRequest.prototype.send = function() {
-        if (this._blocked) return;
-        return _send.apply(this, arguments);
-    };
-
-    // Bloquear appendChild de scripts de ads
-    var _ac = Node.prototype.appendChild;
-    Node.prototype.appendChild = function(el) {
-        if (el && el.tagName === 'SCRIPT') {
-            var src = (el.src || '').toLowerCase();
-            if (AD_DOMAINS.some(function(d){ return src.includes(d); })) return el;
-        }
-        if (el && el.tagName === 'IFRAME') {
-            var src2 = (el.src || '').toLowerCase();
-            if (AD_DOMAINS.some(function(d){ return src2.includes(d); })) return el;
-        }
-        return _ac.apply(this, arguments);
-    };
-    var _ip = Element.prototype.insertAdjacentHTML;
-    Element.prototype.insertAdjacentHTML = function(pos, html) {
-        var h = String(html || '').toLowerCase();
-        if (AD_DOMAINS.some(function(d){ return h.includes(d); })) return;
-        return _ip.apply(this, arguments);
-    };
-
-    // Bloquear window.open (popups/popunders)
-    window.open = function() { return null; };
-    window.alert = function() { return true; };
-    window.confirm = function() { return true; };
-    window.prompt = function() { return ''; };
-
-    // Bloquear document.write con ads
-    var _dw = document.write.bind(document);
-    document.write = function(html) {
-        var h = String(html || '').toLowerCase();
-        if (AD_DOMAINS.some(function(d){ return h.includes(d); })) return;
-        return _dw(html);
-    };
-  })(); true;
-`;
-
-  const afterLoadJS = `
-  (function () {
-    document.body.style.backgroundColor = '#000'; document.body.style.overflow = 'hidden';
-    var notified = false, attempts = 0, interval;
-
-    // ─── LIMPIEZA AGRESIVA DE ADS (vimeos.net, etc.) ─────
-    var AD_SELECTORS = [
-        '[id*="ad"]', '[class*="ad-"]', '[class*="-ad"]', '[class*="ads"]',
-        '[id*="popup"]', '[class*="popup"]', '[class*="overlay"]',
-        '[class*="banner"]', '[id*="banner"]', '[class*="promo"]',
-        '[data-ad]', 'ins.adsbygoogle', 'div[style*="z-index: 9"]',
-        '.vd-overlay', '.vd-popup', '#wad-leader-board', '#aswift_',
-        '.adbanner', '.adbox', '.ad-slot', '.ad-container',
-        'div[class*="monetag"]', 'div[class*="adsense"]',
-    ];
-
-    function removeAds() {
-        AD_SELECTORS.forEach(function(sel) {
-            document.querySelectorAll(sel).forEach(function(el) {
-                var v = el.querySelector('video');
-                var iframe = el.querySelector('iframe');
-                if (!v && !iframe) {
-                    try { el.remove(); } catch(e) {}
-                }
-            });
-        });
-        // Remover iframes de ads (que NO sean el reproductor principal)
-        document.querySelectorAll('iframe').forEach(function(f, i) {
-            if (i === 0) return; // El primer iframe suele ser el player
-            var src = (f.src || '').toLowerCase();
-            var adDomains = ['ads', 'popup', 'popunder', 'monetag', 'exoclick', 'adsterra', 'propellerads', 'traffick', 'adcash'];
-            if (adDomains.some(function(d){ return src.includes(d); })) {
-                try { f.remove(); } catch(e) {}
-            }
-        });
-        // Remover overlays de alta z-index que no sean el player
-        document.querySelectorAll('div, a').forEach(function(el) {
-            if (el.tagName === 'VIDEO' || el.tagName === 'IFRAME') return;
-            var st = window.getComputedStyle(el);
-            var z = parseInt(st.zIndex || '0');
-            if ((st.position === 'fixed' || st.position === 'absolute') && z > 1000) {
-                var hasVideo = el.querySelector('video, iframe');
-                if (!hasVideo) try { el.remove(); } catch(e) {}
-            }
-        });
+  const handleNextEpisode = () => {
+    if (!nextEpisodeData) return;
+    const { url, title, season, episode } = nextEpisodeData;
+    if (seriesItem) {
+      const { markAsWatched, addToHistory } = require('../../store/useAppStore').useAppStore.getState();
+      markAsWatched(`${seriesItem.id}-s${season}-e${episode}`);
+      addToHistory(seriesItem, season, episode);
     }
+    navigation.replace('PlayerTV', {
+      videoUrl: url,
+      title,
+      seriesItem,
+      season,
+      episode,
+    });
+  };
 
-    var tryPlay = function () {
-        attempts++; if (attempts > 60) { clearInterval(interval); return; }
-        removeAds();
-        
-        var video = document.querySelector('video'); 
-        var iframe = document.querySelector('iframe');
-        
-        if (iframe && !video) { iframe.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:999999;background:#000;border:none;'; }
-        if (video) {
-            video.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:999999;object-fit:contain;background:#000;';
-            if (!notified && !video.paused && video.currentTime > 0.1) {
-                notified = true; try { window.ReactNativeWebView.postMessage('video_playing'); } catch (e) { }
-            }
-            if (video.paused && attempts > 2) { video.muted = false; video.volume = 1; video.play().catch(function(){}); }
-            video.muted = false; video.volume = 1;
-        }
+  // Ad blocker and after-load scripts are defined as module-level constants
+  // for performance (see AD_BLOCKER_JS and AFTER_LOAD_JS above)
 
-        var playBtns = ['.vjs-big-play-button', '.jw-icon-display', '.plyr__control--overlaid', '.play-btn', '.voe-play', '.play'];
-        playBtns.forEach(function (sel) { var b = document.querySelector(sel); if (b) try { b.click(); } catch(e){} });
-
-        if(attempts === 4 || attempts === 8) {
-            try {
-                var centerEl = document.elementFromPoint(window.innerWidth/2, window.innerHeight/2);
-                if(centerEl && centerEl.tagName !== 'VIDEO') {
-                    centerEl.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true }));
-                }
-            } catch(e) {}
-        }
-    };
-    interval = setInterval(tryPlay, 800);
-
-    window.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' || e.keyCode === 13 || e.keyCode === 66 || e.keyCode === 23) {
-        e.preventDefault(); e.stopImmediatePropagation();
-        // Notificar para mostrar el overlay
-        try { window.ReactNativeWebView.postMessage('cmd_open_controls'); } catch (x) { }
-        
-        var v = document.querySelector('video');
-        if (v) { if (v.paused) v.play(); else v.pause(); }
-      }
-    }, true);
-    // Bloquear cualquier handler de keydown de la página que interfiera
-    window.addEventListener('keydown', function(e) {
-        if (e.keyCode === 37 || e.keyCode === 39) {
-            e.stopImmediatePropagation();
-            var v = document.querySelector('video');
-            if (v) v.currentTime += e.keyCode === 37 ? -10 : 10;
-        }
-    }, true);
-  })();
-true;
-`;
-
-  const handleShouldStartLoadWithRequest = (request: any) => {
+  const handleShouldStartLoadWithRequest = useCallback((request: any) => {
     const url = request.url.toLowerCase();
-    const bad = ['vimeus', 'adcash', 'popads', 'popcash', 'doubleclick', 'googlesyndication', 'traffic', 'onclick', 'track'];
-    if (bad.some(h => url.includes(h))) return false;
+
+    // Bloquear intents de "instalar reproductor" (siempre)
     if (url.startsWith('intent://') || url.startsWith('market://') || url.includes('play.google.com')) return false;
 
-    // Dominios siempre permitidos (CDN de streams, DRM, certificados)
+    // Bloquear ads y popunders conocidos (siempre)
+    const BLOCKED = [
+      'adcash', 'popads', 'popcash', 'doubleclick', 'googlesyndication',
+      'exoclick', 'propellerads', 'adsterra', 'monetag', 'popunder',
+      'onclick', 'clickadu', 'adspop', 'adskeeper',
+    ];
+    if (BLOCKED.some(h => url.includes(h))) return false;
+
+    // Dominios de CDN/streaming — siempre permitir
     const ALWAYS_ALLOW = [
       'cvattv.com.ar', 'nebunexa', 'widevine', 'license', 'drm',
-      'castercdn', 'cablevisión', 'cablevision', 'flow.com.ar',
+      'castercdn', 'cablevision', 'flow.com.ar',
       'angulismotv', 'streamtp', 'welivesports', 'bestleague',
+      'jwplayer', 'jwpcdn', 'jwpsrv', 'akamai', 'cloudfront', 'edge-live',
+      'shaka', 'dashjs', 'videojs', 'cdn.', '.mpd', '.m3u8', '.mp4', '.ts',
+      // Reproductores de películas/series
+      'voe.sx', 'streamtape', 'doodstream', 'filemoon', 'wootly',
+      'vidhide', 'vidfast', 'dropload', 'uqload', 'upstream',
     ];
     if (ALWAYS_ALLOW.some(d => url.includes(d))) return true;
 
-    // Si la navegacion es en el frame principal (top frame), ser muy estrictos
+    // Solo bloquear top-frame si el destino es claramente una página de descarga
+    // o una tienda de apps (no bloqueamos reproductores que redirigen dentro de su CDN)
     if (isLocked && request.isTopFrame) {
-      const originalDomain = cleanUrl.split('/')[2];
-      if (originalDomain && !url.includes(originalDomain)
-        && !url.includes('about:blank')
-        && !url.includes('mp4')
-        && !url.includes('m3u8')
-        && !url.includes('.mpd')
-      ) return false;
+      const isAppStore = url.includes('apk') || url.includes('download') || url.includes('install');
+      if (isAppStore) return false;
     }
+
     return true;
-  };
+  }, [isLocked, cleanUrl]);
 
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -581,19 +700,66 @@ true;
     <View style={{ flex: 1, backgroundColor: '#000', flexDirection: 'row' }}>
       {/* ── VIDEO AREA (100% o 65% en modo PiP) ──────────────── */}
       <View style={{ flex: showF1Panel ? 0.65 : 1, backgroundColor: '#000' }}>
-        {/* Overlay compartido para Shaka/WebView */}
+
+        {/* ── NEXT EPISODE CARD ──────────────────────────────── */}
+        {isNearEnd && (
+          <View style={{
+            position: 'absolute', bottom: 80, right: 40, zIndex: 999,
+            backgroundColor: 'rgba(0,0,0,0.88)',
+            borderRadius: 16, padding: 20, minWidth: 320,
+            borderWidth: 1, borderColor: 'rgba(176,38,255,0.4)',
+            shadowColor: '#B026FF', shadowOpacity: 0.3, shadowRadius: 20,
+          }}>
+            <Text style={{ color: '#B026FF', fontSize: 11, fontWeight: '900', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 6 }}>A continuación</Text>
+            <Text numberOfLines={1} style={{ color: '#fff', fontSize: 18, fontWeight: '900', marginBottom: 16 }}>{nextEpisodeData!.title}</Text>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TvFocusable
+                hasTVPreferredFocus={true}
+                onPress={handleNextEpisode}
+                borderWidth={0}
+                scaleTo={1.06}
+                style={{ borderRadius: 10, flex: 1 }}
+              >
+                {(f: boolean) => (
+                  <View style={{
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+                    backgroundColor: f ? '#fff' : '#B026FF',
+                    paddingVertical: 12, paddingHorizontal: 20, borderRadius: 10,
+                  }}>
+                    <SkipForward color={f ? '#B026FF' : '#fff'} size={20} />
+                    <Text style={{ color: f ? '#B026FF' : '#fff', fontWeight: '900', fontSize: 15, marginLeft: 8 }}>Siguiente episodio</Text>
+                  </View>
+                )}
+              </TvFocusable>
+              <TvFocusable
+                onPress={() => setNextEpDismissed(true)}
+                borderWidth={0}
+                scaleTo={1.06}
+                style={{ borderRadius: 10 }}
+              >
+                {(f: boolean) => (
+                  <View style={{
+                    alignItems: 'center', justifyContent: 'center',
+                    backgroundColor: f ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)',
+                    paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10,
+                  }}>
+                    <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>✕</Text>
+                  </View>
+                )}
+              </TvFocusable>
+            </View>
+          </View>
+        )}
+
+        {/* Overlay de contenido (películas/series) */}
         {(useShakaPlayer || (!isDash && !isDirectVideo)) && (
-          <TvPlayerOverlay
+          <TvContentOverlay
             webViewRef={webViewRef}
-            mode={useShakaPlayer ? 'shaka' : 'webview'}
+            title={route.params?.title ?? ''}
             currentTime={currentTime}
             duration={duration}
             isPaused={isPaused}
-            qualityLevels={qualityLevels}
-            accentColor="#B026FF"
             forceShowTrigger={showOverlayTrigger}
-            showF1Button={!showF1Panel}
-            onF1={() => setShowF1Panel(true)}
             onBack={() => navigation.goBack()}
           />
         )}
@@ -638,8 +804,8 @@ true;
               sharedCookiesEnabled={true}
               androidLayerType="hardware"
               mixedContentMode="always"
-              injectedJavaScriptBeforeContentLoaded={useShakaPlayer ? undefined : adBlockerJS}
-              injectedJavaScript={useShakaPlayer ? undefined : afterLoadJS}
+              injectedJavaScriptBeforeContentLoaded={useShakaPlayer ? undefined : AD_BLOCKER_JS}
+              injectedJavaScript={useShakaPlayer ? undefined : AFTER_LOAD_JS}
               injectedJavaScriptForMainFrameOnly={false}
               onMessage={handleMessage}
               originWhitelist={['*']}

@@ -50,7 +50,7 @@ function matchesCategory(event: any, catId: string): boolean {
 }
 
 // ─── Filter Pill ─────────────────────────────────────────────────────────────
-function FilterPill({ item, isActive, onPress }: { item: any; isActive: boolean; onPress: () => void }) {
+const FilterPill = React.memo(function FilterPill({ item, isActive, onPress }: { item: any; isActive: boolean; onPress: () => void }) {
     return (
         <TvFocusable
             onPress={onPress}
@@ -78,10 +78,9 @@ function FilterPill({ item, isActive, onPress }: { item: any; isActive: boolean;
             )}
         </TvFocusable>
     );
-}
+});
 
-// ─── Tarjeta de partido de la agenda ─────────────────────────────────────────
-function AgendaMatchCard({ event, onPress }: { event: any; onPress: () => void }) {
+const AgendaMatchCard = React.memo(function AgendaMatchCard({ event, onPress }: { event: any; onPress: () => void }) {
     const hasVideo = !!event.videoUrl;
     const isLive = (event.status || '').toLowerCase().includes('vivo');
     const serverCount = Array.isArray(event.servers) ? event.servers.length : 0;
@@ -232,7 +231,7 @@ function AgendaMatchCard({ event, onPress }: { event: any; onPress: () => void }
             )}
         </TvFocusable>
     );
-}
+});
 
 // ─── Sección de Agenda del Día ────────────────────────────────────────────────
 function AgendaSection({ events, activeFilter, onFilterChange }: {
@@ -354,8 +353,7 @@ function AgendaSection({ events, activeFilter, onFilterChange }: {
     );
 }
 
-// ─── Tarjeta de Canal / Carpeta ───────────────────────────────────────────────
-function ChannelCard({ item, onPress }: { item: any; onPress: () => void }) {
+const ChannelCard = React.memo(function ChannelCard({ item, onPress }: { item: any; onPress: () => void }) {
     return (
         <TvFocusable
             onPress={onPress}
@@ -417,12 +415,12 @@ function ChannelCard({ item, onPress }: { item: any; onPress: () => void }) {
             )}
         </TvFocusable>
     );
-}
+});
 
 // ─── Pantalla principal de Deportes ──────────────────────────────────────────
 export default function TvSportsScreen() {
     const navigation = useNavigation<any>();
-    const { cloudContent, featuredEvents, channelFolders } = useAppStore();
+    const { cloudContent, featuredEvents, channelFolders, fetchCloudContent } = useAppStore();
 
     const flatListRef = useRef<FlatList>(null);
     const scrollOffset = useRef(0);
@@ -432,6 +430,8 @@ export default function TvSportsScreen() {
     const [selectedEventModal, setSelectedEventModal] = useState<{ event: any, servers: any[] } | null>(null);
 
     useEffect(() => {
+        // Fetch fresco de Firestore cada vez que se abre la pantalla
+        fetchCloudContent();
         (global as any).openServerModal = (event: any, servers: any[]) => {
             setSelectedEventModal({ event, servers });
         };
@@ -532,7 +532,7 @@ export default function TvSportsScreen() {
                 keyExtractor={(_, idx) => idx.toString()}
                 showsVerticalScrollIndicator={false}
                 onScroll={handleScroll}
-                scrollEventThrottle={16}
+                scrollEventThrottle={100}
                 contentContainerStyle={{ paddingBottom: 200, paddingTop: 120 }}
                 initialNumToRender={3}
                 windowSize={5}

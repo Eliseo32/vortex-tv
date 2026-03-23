@@ -10,6 +10,7 @@ const { height: windowHeight, width: windowWidth } = Dimensions.get('window');
 
 interface TvLiveScreenProps {
   category?: string;
+  route?: any; // Añadido para React Navigation
 }
 
 // ─── Mapa de etiquetas por genre ────────────────────────────────────────────
@@ -134,15 +135,17 @@ function TvChannelsVerticalGrid({ channels }: { channels: any[] }) {
         renderItem={({ item, index }) => (
           <TvFocusable
             onPress={() => {
-              // Ir directo al reproductor con la URL del canal
               const url = item.videoUrl || '';
               if (url) {
-                // DrmPlayer: ClearKey (Sensa) o Widevine (Flow)
                 const hasDrm = url.includes('drmKeyId=') || url.includes('drmType=widevine');
                 if (hasDrm) {
                   navigation.navigate('DrmPlayerTV', { videoUrl: url });
                 } else {
-                  navigation.navigate('PlayerTV', { videoUrl: url });
+                  // Usar el reproductor dedicado de canales
+                  navigation.navigate('ChannelPlayerTV', {
+                    channel: item,
+                    folder: item._folder || null,
+                  });
                 }
               }
             }}
@@ -291,7 +294,8 @@ function TvChannelsVerticalGrid({ channels }: { channels: any[] }) {
 }
 
 // ─── Pantalla principal ──────────────────────────────────────────────────────
-export default function TvLiveScreen({ category = 'movie' }: TvLiveScreenProps) {
+export default function TvLiveScreen({ category: propCategory, route }: any) {
+  const activeCategory = propCategory || route?.params?.category || 'movie';
   const navigation = useNavigation<any>();
   const { cloudContent, channelFolders } = useAppStore();
 
@@ -304,9 +308,9 @@ export default function TvLiveScreen({ category = 'movie' }: TvLiveScreenProps) 
 
   // Todo el contenido de la categoría seleccionada unida con las carpetas de canales M3U8
   const filteredContent = useMemo(() => {
-    const baseContent = cloudContent.filter((item) => item.type === category);
+    const baseContent = cloudContent.filter((item) => item.type === activeCategory);
 
-    if (category === 'tv') {
+    if (activeCategory === 'tv') {
       const dynamicFolderChannels: any[] = [];
       channelFolders.forEach(folder => {
         folder.options.forEach((opt: any, i: number) => {
@@ -320,7 +324,8 @@ export default function TvLiveScreen({ category = 'movie' }: TvLiveScreenProps) 
             videoUrl: opt.iframe,
             description: `${folder.name} en directo`,
             year: 'LIVE',
-            rating: ''
+            rating: '',
+            _folder: folder,   // <- referencia a la carpeta para cambiar servidor
           });
         });
       });
@@ -328,7 +333,7 @@ export default function TvLiveScreen({ category = 'movie' }: TvLiveScreenProps) 
     }
 
     return baseContent;
-  }, [cloudContent, channelFolders, category]);
+  }, [cloudContent, channelFolders, activeCategory]);
 
   const heroItems = useMemo(() => filteredContent.slice(0, 5), [filteredContent]);
 
@@ -373,7 +378,7 @@ export default function TvLiveScreen({ category = 'movie' }: TvLiveScreenProps) 
   }, [heroItems]);
 
   // ─── Si es TV en Vivo → vista "EPG Simulado Vertical" ─────────────────────
-  if (category === 'tv') {
+  if (activeCategory === 'tv') {
     return (
       <View style={{ flex: 1, backgroundColor: '#050505' }}>
         <View style={{ ...StyleSheet.absoluteFillObject, overflow: 'visible' }} pointerEvents="none">
@@ -418,13 +423,13 @@ export default function TvLiveScreen({ category = 'movie' }: TvLiveScreenProps) 
       <View style={{ flex: 1 }}>
         <FlatList
           ref={flatListRef}
-          key={category}
+          key={activeCategory}
           data={filteredContent}
           keyExtractor={(item) => item.id}
           numColumns={6}
           showsVerticalScrollIndicator={false}
           onScroll={handleScroll}
-          scrollEventThrottle={16}
+          scrollEventThrottle={100}
           contentContainerStyle={{ paddingHorizontal: 52, paddingBottom: 200, paddingTop: 120 }}
 
           ListHeaderComponent={
@@ -432,7 +437,7 @@ export default function TvLiveScreen({ category = 'movie' }: TvLiveScreenProps) 
               {/* Título */}
               <View style={{ marginBottom: 16, paddingLeft: 4, marginTop: 4 }}>
                 <Text style={{ color: '#fff', fontSize: 30, fontWeight: '900', letterSpacing: -0.5 }}>
-                  {categoryLabel[category] || 'Explorar'}
+                  {categoryLabel[activeCategory] || 'Explorar'}
                 </Text>
               </View>
 

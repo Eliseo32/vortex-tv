@@ -74,7 +74,14 @@ export default function TvDetailScreen() {
     if (item.genre === 'Deportes') {
       navigation.navigate('SportsPlayerTV', { item });
     } else {
-      navigation.navigate('PlayerTV', { videoUrl: servers[0].url, title: isSeries ? `${item.title} - T${selectedSeason} E${selectedEpisode}` : item.title });
+      navigation.navigate('PlayerTV', {
+        videoUrl: servers[0].url,
+        title: isSeries ? `${item.title} - T${selectedSeason} E${selectedEpisode}` : item.title,
+        // Series context for "Next Episode" button
+        seriesItem: isSeries ? item : undefined,
+        season: isSeries ? selectedSeason : undefined,
+        episode: isSeries ? selectedEpisode : undefined,
+      });
     }
   };
 

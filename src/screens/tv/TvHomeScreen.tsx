@@ -3,30 +3,27 @@ import {
   View, Text, FlatList, ActivityIndicator,
   Dimensions, Animated, BackHandler, ToastAndroid
 } from 'react-native';
-import { Play, Info, Sparkles, Trophy, Tv, Film, Ghost, MonitorPlay } from 'lucide-react-native';
+
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useAppStore } from '../../store/useAppStore';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import TvMovieCard from '../../components/tv/TvMovieCard';
 import TvTopBar from '../../components/tv/TvTopBar';
-import TvSideBar from '../../components/tv/TvSideBar';
 import TvFocusable from '../../components/tv/TvFocusable';
+import TvAgendaSection from '../../components/tv/TvAgendaSection';
 
 import TvSearchScreen from './TvSearchScreen';
 import TvMyListScreen from './TvMyListScreen';
-import TvLiveScreen from './TvLiveScreen';
-import TvHistoryScreen from './TvHistoryScreen';
-import TvSportsScreen from './TvSportsScreen';
+
+import TvDiscoverScreen from './TvDiscoverScreen';
 
 const { height: windowHeight, width: windowWidth } = Dimensions.get('window');
 
 // ─── Configuración de secciones del home ──────────────────────────────────────
-// Cada row tiene: título, ícono, color de acento, y cómo filtrar cloudContent
 interface ContentRow {
   id: string;
   title: string;
-  Icon: any;
   accent: string;
   filter: (item: any) => boolean;
 }
@@ -34,79 +31,39 @@ interface ContentRow {
 const HOME_ROWS: ContentRow[] = [
   {
     id: 'sports',
-    title: '⚽ Deportes en Vivo',
-    Icon: Trophy,
-    accent: '#22c55e',
+    title: 'DEPORTES EN VIVO',
+    accent: '#39FF14',
     filter: (i) => i.type === 'tv' && i.genre === 'Deportes',
   },
   {
-    id: 'nacional',
-    title: '📡 TV Nacional',
-    Icon: Tv,
-    accent: '#3b82f6',
-    filter: (i) => i.type === 'tv' && i.genre === 'Nacional',
-  },
-  {
     id: 'movie',
-    title: '🎬 Películas',
-    Icon: Film,
-    accent: '#B026FF',
+    title: 'PELÍCULAS DESTACADAS',
+    accent: '#b6a0ff',
     filter: (i) => i.type === 'movie',
   },
   {
     id: 'series',
-    title: '📺 Series',
-    Icon: MonitorPlay,
-    accent: '#a78bfa',
+    title: 'SERIES TOP',
+    accent: '#00e3fd',
     filter: (i) => i.type === 'series',
   },
   {
     id: 'anime',
-    title: '👾 Anime',
-    Icon: Ghost,
-    accent: '#f472b6',
+    title: 'ANIME',
+    accent: '#ffb151',
     filter: (i) => i.type === 'anime',
-  },
-  {
-    id: 'entretenimiento',
-    title: '🎭 Entretenimiento',
-    Icon: Tv,
-    accent: '#fb923c',
-    filter: (i) => i.type === 'tv' && i.genre === 'Entretenimiento',
-  },
-  {
-    id: 'noticias',
-    title: '📰 Noticias',
-    Icon: Tv,
-    accent: '#94a3b8',
-    filter: (i) => i.type === 'tv' && i.genre === 'Noticias',
-  },
-  {
-    id: 'music',
-    title: '🎵 Música',
-    Icon: Tv,
-    accent: '#e879f9',
-    filter: (i) => i.type === 'tv' && i.genre === 'Música',
-  },
-  {
-    id: 'infantil',
-    title: '🧒 Infantil',
-    Icon: Tv,
-    accent: '#34d399',
-    filter: (i) => i.type === 'tv' && i.genre === 'Infantiles',
   },
 ];
 
-const PremiumHeroButton = ({ icon: Icon, title, onPress, isPrimary = false, nextFocusUp, nextFocusLeft, hasTVPreferredFocus }: any) => (
-  <TvFocusable onPress={onPress} borderWidth={0} scaleTo={1.06} style={{ borderRadius: 10, marginRight: 12 }} nextFocusUp={nextFocusUp} nextFocusLeft={nextFocusLeft} hasTVPreferredFocus={hasTVPreferredFocus}>
+const PremiumHeroButton = ({ title, onPress, isPrimary = false, nextFocusUp, nextFocusLeft, hasTVPreferredFocus }: any) => (
+  <TvFocusable onPress={onPress} borderWidth={0} scaleTo={1.06} style={{ borderRadius: 10, marginRight: 16 }} nextFocusUp={nextFocusUp} nextFocusLeft={nextFocusLeft} hasTVPreferredFocus={hasTVPreferredFocus}>
     {(focused: boolean) => (
       <View style={{
-        flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 10,
-        backgroundColor: isPrimary ? (focused ? '#fff' : '#B026FF') : (focused ? '#fff' : 'rgba(255,255,255,0.15)'),
-        borderWidth: isPrimary ? 0 : 2, borderColor: focused ? 'transparent' : 'rgba(255,255,255,0.2)'
+        flexDirection: 'row', alignItems: 'center', paddingHorizontal: 32, paddingVertical: 14, borderRadius: 12,
+        backgroundColor: isPrimary ? (focused ? '#f0f0fd' : '#b6a0ff') : (focused ? '#f0f0fd' : 'rgba(34, 37, 50, 0.4)'),
+        borderWidth: 1, borderColor: focused ? 'transparent' : 'rgba(255,255,255,0.1)'
       }}>
-        <Icon color={isPrimary ? "#000" : (focused ? "#000" : "#fff")} size={18} fill={isPrimary ? "#000" : "none"} />
-        <Text style={{ fontWeight: '900', fontSize: 13, marginLeft: 8, textTransform: 'uppercase', letterSpacing: 1.2, color: isPrimary ? '#000' : (focused ? '#000' : '#fff') }}>
+        <Text style={{ fontWeight: '900', fontSize: 13, textTransform: 'uppercase', letterSpacing: 1.5, color: isPrimary ? '#000' : (focused ? '#000' : '#f0f0fd') }}>
           {title}
         </Text>
       </View>
@@ -116,16 +73,16 @@ const PremiumHeroButton = ({ icon: Icon, title, onPress, isPrimary = false, next
 
 // ─── Row de contenido del home (PREMIUM) ──────────────────────────────────────
 const ContentRowView = React.memo(function ContentRowView({ row, onPress }: { row: { id: string; title: string; accent: string; items: any[] }; onPress: (item: any) => void }) {
-  const renderCard = useCallback(({ item }: { item: any }) => (
-    <TvMovieCard item={item} onPress={() => onPress(item)} accentColor={row.accent} width={140} height={210} />
-  ), [onPress, row.accent]);
+  const renderCard = useCallback(({ item }: { item: any }) => {
+    return <TvMovieCard item={item} onPress={() => onPress(item)} accentColor={row.accent} width={180} height={260} />;
+  }, [onPress, row.accent]);
 
   return (
-    <View style={{ marginBottom: 44 }}>
+    <View style={{ marginBottom: 28 }}>
       {/* Cabecera de la fila */}
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, paddingLeft: 24 }}>
-        <View style={{ width: 4, height: 22, borderRadius: 2, backgroundColor: row.accent, marginRight: 12 }} />
-        <Text style={{ color: '#fff', fontSize: 20, fontWeight: '900', letterSpacing: 0.3 }}>
+        <View style={{ width: 3, height: 20, borderRadius: 2, backgroundColor: row.accent, marginRight: 14 }} />
+        <Text style={{ color: '#f0f0fd', fontSize: 18, fontWeight: '900', letterSpacing: 1.5 }}>
           {row.title}
         </Text>
         <View style={{ marginLeft: 12, backgroundColor: 'rgba(255,255,255,0.06)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
@@ -160,7 +117,9 @@ export default function TvHomeScreen() {
   const [currentTab, setCurrentTab] = useState('home');
   const [forceFocusTopBar, setForceFocusTopBar] = useState(false);
   const lastInteractionTime = useRef(Date.now());
-  const topBarNodeId = useRef<any>(null); // Referencia estricta para la TopBar
+  const topBarNodeId = useRef<any>(null);
+  // Lazy-mount tracking: screen component is only created on first visit
+  const visitedTabs = useRef<Set<string>>(new Set(['home']));
 
   // Animaciones y estados del hero
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -261,23 +220,17 @@ export default function TvHomeScreen() {
     scrollOffset.current = event.nativeEvent.contentOffset.y;
   };
 
-  if (isLoadingContent) {
-    return (
-      <View style={{ flex: 1, backgroundColor: '#050505', alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color="#B026FF" />
-      </View>
-    );
-  }
+  // Mark tab as visited on switch (lazy-mount tracking)
+  const handleSetTab = useCallback((tab: string) => {
+    visitedTabs.current.add(tab);
+    setCurrentTab(tab);
+  }, []);
 
   // ─── Renderizado por tab ───────────────────────────────────────────────────
   const renderContent = () => {
     if (currentTab === 'search') return <TvSearchScreen />;
     if (currentTab === 'mylist') return <TvMyListScreen />;
-    if (currentTab === 'history') return <TvHistoryScreen />;
-    if (currentTab === 'sport') return <TvSportsScreen />;
-    if (['movie', 'series', 'anime', 'tv'].includes(currentTab)) {
-      return <TvLiveScreen category={currentTab} />;
-    }
+    if (currentTab === 'discover') return <TvDiscoverScreen currentTab={currentTab} />;
 
     // ─── HOME ──────────────────────────────────────────────────────────────
     return (
@@ -289,16 +242,16 @@ export default function TvHomeScreen() {
           showsVerticalScrollIndicator={false}
           onScroll={handleScroll}
           scrollEventThrottle={100}
-          contentContainerStyle={{ paddingBottom: 150 }}
+          contentContainerStyle={{ paddingBottom: 60 }}
           initialNumToRender={3}
           maxToRenderPerBatch={2}
           windowSize={5}
           removeClippedSubviews={true}
           ListHeaderComponent={
-            <View style={{ marginBottom: 40, paddingTop: 20 }}>
+            <View style={{ marginBottom: 40, paddingTop: 70 }}>
               {/* ── HERO BANNER ───────────────────── */}
               {activeHeroItem && (
-                <View style={{ width: '100%', height: windowHeight * 0.58, backgroundColor: '#050505' }}>
+                <View style={{ width: '100%', height: windowHeight * 0.75, backgroundColor: '#050505' }} pointerEvents="box-none">
                   {/* Imagen de fondo - esta sola tiene overflow hidden */}
                   <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' }}>
                     <Animated.Image
@@ -327,22 +280,20 @@ export default function TvHomeScreen() {
                   />
 
                   {/* Contenido del Hero (texto) */}
-                  <View style={{ position: 'absolute', bottom: 80, left: 50, width: '55%' }} pointerEvents="none">
+                  <View style={{ position: 'absolute', bottom: 120, left: 60, width: '55%' }} pointerEvents="none">
                     {/* Metadata */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 10 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#B026FF', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4 }}>
-                        {/* @ts-ignore */}
-                        <Sparkles color="#000" size={12} fill="#000" />
-                        <Text style={{ color: '#000', fontSize: 11, fontWeight: '900', letterSpacing: 1.5, marginLeft: 6, textTransform: 'uppercase' }}>
-                          {activeHeroItem.type === 'movie' ? 'Película' : activeHeroItem.type === 'series' ? 'Serie' : 'Anime'}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 12 }}>
+                      <View style={{ borderLeftWidth: 3, borderLeftColor: '#b6a0ff', paddingLeft: 8 }}>
+                        <Text style={{ color: '#b6a0ff', fontSize: 11, fontWeight: '900', letterSpacing: 2, textTransform: 'uppercase' }}>
+                          {activeHeroItem.type === 'movie' ? 'FEATURE FILM' : activeHeroItem.type === 'series' ? 'ORIGINAL SERIES' : 'ANIME EVENT'}
                         </Text>
                       </View>
                       {activeHeroItem.year && (
-                        <Text style={{ color: '#D1D5DB', fontSize: 14, fontWeight: '800', letterSpacing: 1 }}>{activeHeroItem.year}</Text>
+                        <Text style={{ color: '#aaaab7', fontSize: 12, fontWeight: '800', letterSpacing: 1 }}>{activeHeroItem.year}</Text>
                       )}
                       {activeHeroItem.rating && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 }}>
-                          <Text style={{ color: '#B026FF', fontSize: 12, fontWeight: '900' }}>{activeHeroItem.rating} ★</Text>
+                        <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 }}>
+                          <Text style={{ color: '#00e3fd', fontSize: 11, fontWeight: '900', letterSpacing: 1 }}>RATING {activeHeroItem.rating}</Text>
                         </View>
                       )}
                     </View>
@@ -364,15 +315,15 @@ export default function TvHomeScreen() {
                     )}
 
                     {/* Sinopsis */}
-                    <Text numberOfLines={3} style={{ color: '#D1D5DB', fontSize: 15, marginBottom: 10, lineHeight: 22, fontWeight: '500', maxWidth: '90%' }}>
+                    <Text numberOfLines={3} style={{ color: '#D1D5DB', fontSize: 16, marginBottom: 16, lineHeight: 24, fontWeight: '500', maxWidth: '90%' }}>
                       {activeHeroItem.description}
                     </Text>
                   </View>
 
                   {/* Botones de acción - FUERA de pointerEvents=none, en flow normal para recibir foco */}
-                  <View style={{ position: 'absolute', bottom: 20, left: 50, flexDirection: 'row', alignItems: 'center' }}>
+                  <View style={{ position: 'absolute', bottom: 40, left: 60, flexDirection: 'row', alignItems: 'center' }}>
                     <PremiumHeroButton
-                      icon={Play} title="Reproducir" isPrimary={true}
+                      title="WATCH NOW" isPrimary={true}
                       onPress={() => {
                         lastInteractionTime.current = Date.now();
                         navigation.navigate('DetailTV', { item: activeHeroItem });
@@ -380,7 +331,7 @@ export default function TvHomeScreen() {
                       hasTVPreferredFocus={true}
                     />
                     <PremiumHeroButton
-                      icon={Info} title="Más Info" isPrimary={false}
+                      title="EXPLORE DETAILS" isPrimary={false}
                       onPress={() => {
                         lastInteractionTime.current = Date.now();
                         navigation.navigate('DetailTV', { item: activeHeroItem });
@@ -390,7 +341,7 @@ export default function TvHomeScreen() {
 
                   {/* Indicadores del carrusel */}
                   {featuredItems.length > 1 && (
-                    <View style={{ position: 'absolute', bottom: 8, left: 50, flexDirection: 'row', alignItems: 'center', gap: 6 }} pointerEvents="none">
+                    <View style={{ position: 'absolute', bottom: 16, left: 60, flexDirection: 'row', alignItems: 'center', gap: 6 }} pointerEvents="none">
                       {featuredItems.map((_, idx) => (
                         <View key={idx} style={{
                           height: 4, borderRadius: 2,
@@ -404,42 +355,40 @@ export default function TvHomeScreen() {
               )}
             </View>
           }
-          renderItem={({ item: row }) => (
-            <ContentRowView
-              key={row.id}
-              row={row}
-              onPress={(item) => {
-                lastInteractionTime.current = Date.now();
-                navigation.navigate('DetailTV', { item });
-              }}
-            />
-          )}
+          renderItem={({ item: row }) => {
+            if (row.id === 'sports') {
+              return <TvAgendaSection key={row.id} />;
+            }
+            return (
+              <ContentRowView
+                key={row.id}
+                row={row}
+                onPress={(item) => {
+                  lastInteractionTime.current = Date.now();
+                  navigation.navigate('DetailTV', { item });
+                }}
+              />
+            );
+          }}
         />
       </View>
     );
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#050505', flexDirection: 'row' }}>
-      {/* SIDEBAR - Flex layout */}
-      <TvSideBar currentTab={currentTab} setCurrentTab={setCurrentTab} />
+    <View style={{ flex: 1, backgroundColor: '#0c0e17', flexDirection: 'column' }}>
+
+      {/* TOPBAR EN NORMAL FLOW (Ahora es toda la navegación superior) */}
+      <View style={{ zIndex: 100, width: '100%', position: 'absolute', top: 0, left: 0, right: 0 }} ref={topBarNodeId}>
+        <TvTopBar currentTab={currentTab} setCurrentTab={handleSetTab} forceFocus={forceFocusTopBar} />
+      </View>
 
       {/* CONTENIDO PRINCIPAL */}
-      <View style={{ flex: 1 }}>
-
-
-
-        {/* TOPBAR EN NORMAL FLOW */}
-        <View style={{ zIndex: 100, width: '100%' }} ref={topBarNodeId}>
-          <TvTopBar currentTab={currentTab} setCurrentTab={setCurrentTab} forceFocus={forceFocusTopBar} />
-        </View>
-
-        {/* CONTENIDO */}
-        <View style={{ flex: 1, zIndex: 10 }}>
-          {renderContent()}
-        </View>
-
+      <View style={{ flex: 1, zIndex: 10 }}>
+        {renderContent()}
       </View>
+
     </View>
   );
 }
+

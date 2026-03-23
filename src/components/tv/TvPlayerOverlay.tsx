@@ -16,7 +16,7 @@ import {
 import { WebView } from 'react-native-webview';
 import {
     Play, Pause, SkipBack, SkipForward, Settings, X, Check,
-    ArrowLeft, Maximize2, Volume2, VolumeX, Server, Zap,
+    ArrowLeft, Maximize2, Volume2, VolumeX, Server, Zap, Gamepad2,
 } from 'lucide-react-native';
 import TvFocusable from './TvFocusable';
 
@@ -89,6 +89,8 @@ interface TvPlayerOverlayProps {
     showF1Button?: boolean;
     /** Callback cuando se presiona el botón F1 */
     onF1?: () => void;
+    /** Callback para activar modo de controles nativos del reproductor web */
+    onNativeMode?: () => void;
 }
 
 // ─── Componente ────────────────────────────────────────────────────────────────
@@ -114,6 +116,7 @@ export default function TvPlayerOverlay({
     showServerButton = false,
     showF1Button = false,
     onF1,
+    onNativeMode,
 }: TvPlayerOverlayProps) {
     // ─── State interno ─────────────────────────────────────────────────────
     const [showControls, setShowControls] = useState(true);
@@ -154,7 +157,8 @@ export default function TvPlayerOverlay({
     useEffect(() => {
         showAndResetTimer();
         return () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); };
-    }, [isPaused, showQualityModal, showServerModal]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showQualityModal, showServerModal]);
 
     // Forzar visibilidad cuando el padre lo pide + liberar foco del WebView
     useEffect(() => {
@@ -214,7 +218,8 @@ export default function TvPlayerOverlay({
         if (mode === 'shaka') {
             cmd(`window.postMessage('CMD_${next ? 'MUTE' : 'UNMUTE'}','*');true;`);
         } else if (mode === 'webview') {
-            cmd(`(function(){var v=document.querySelector('video');if(v)v.muted=${next};})();true;`);
+            // Usar postMessage para que el listener en la página maneje JW Player + video element
+            cmd(`window.postMessage('${next ? 'CMD_MUTE' : 'CMD_UNMUTE'}','*');true;`);
         }
     };
 
@@ -238,6 +243,33 @@ export default function TvPlayerOverlay({
             `);
         }
         setShowQualityModal(true);
+    };
+
+    // Abre la configuración nativa del reproductor web (audio, subtítulos, idioma)
+    const handleOpenPlayerSettings = () => {
+        showAndResetTimer();
+        if (mode === 'shaka') {
+            // En modo shaka usamos nuestro picker de calidad
+            handleOpenQuality();
+            return;
+        }
+        // Para JW Player, video.js, Plyr — click en el engranaje del reproductor web
+        cmd(`
+            (function(){
+                // JW Player gear/settings
+                var jwGear = document.querySelector('.jw-icon-settings, .jw-settings-menu-btn, [aria-label="Settings"]');
+                if (jwGear) { jwGear.click(); return; }
+                // video.js settings menu
+                var vjsMenu = document.querySelector('.vjs-menu-button-popup button, .vjs-control-bar .vjs-menu-button');
+                if (vjsMenu) { vjsMenu.click(); return; }
+                // Plyr settings
+                var plyrMenu = document.querySelector('[data-plyr="settings"], .plyr__menu__toggle');
+                if (plyrMenu) { plyrMenu.click(); return; }
+                // Generic fallback — click on any settings-like gear icon
+                var generic = document.querySelector('[class*="settings"], [class*="gear"], [aria-label*="etting"]');
+                if (generic) { generic.click(); return; }
+            })();true;
+        `);
     };
 
     const handleSelectQuality = (index: number | 'auto') => {
@@ -386,7 +418,19 @@ export default function TvPlayerOverlay({
                     <CtrlBtn icon={SkipForward} onPress={() => handleSeek(15)} label="+15s" />
                     <View style={styles.rightBtns}>
                         <CtrlBtn icon={isMuted ? VolumeX : Volume2} onPress={handleMute} />
-                        <CtrlBtn icon={Settings} onPress={handleOpenQuality} />
+                        <CtrlBtn icon={Settings} onPress={handleOpenPlayerSettings} />
+                        {/* Modo controles nativos: solo disponible en WebView/Shaka */}
+                        {onNativeMode && mode !== 'native' && (
+                            <TvFocusable
+                                onPress={() => { showAndResetTimer(); onNativeMode(); }}
+                                onFocus={showAndResetTimer}
+                                scaleTo={1.15} borderWidth={0}
+                                style={[styles.ctrlBtn, { backgroundColor: 'rgba(176,38,255,0.12)', borderWidth: 1, borderColor: 'rgba(176,38,255,0.3)' }]}
+                                focusedStyle={[styles.ctrlBtnFocused, { borderColor: '#B026FF', backgroundColor: 'rgba(176,38,255,0.3)' }]}
+                            >
+                                {(f: boolean) => <Gamepad2 color={f ? '#fff' : '#B026FF'} size={22} />}
+                            </TvFocusable>
+                        )}
                         {showF1Button && (
                             <TvFocusable
                                 onPress={() => { showAndResetTimer(); onF1?.(); }}

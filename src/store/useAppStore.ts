@@ -168,14 +168,13 @@ export const useAppStore = create<AppState>()(
       channelFolders: [],
       isLoadingContent: false,
       fetchCloudContent: async () => {
-        // Guard: don't fetch if Firebase user isn't ready yet
         if (!auth.currentUser) {
           console.log('[Store] fetchCloudContent: no Firebase user, skipping.');
           return;
         }
+
         set({ isLoadingContent: true });
         try {
-          // Leer las colecciones principales en paralelo
           const [contentQuery, agendaQuery, nowfutbolQuery] = await Promise.all([
             getDocs(collection(db, 'content')),
             getDocs(query(collection(db, 'agenda'), orderBy('createdAt', 'desc'))),
@@ -183,16 +182,14 @@ export const useAppStore = create<AppState>()(
           ]);
 
           const items: ContentItem[] = [];
-          contentQuery.forEach((doc) => { items.push(doc.data() as ContentItem); });
+          contentQuery.forEach((doc) => { items.push({ id: doc.id, ...doc.data() } as ContentItem); });
 
           const events: FeaturedEvent[] = [];
           agendaQuery.forEach((doc) => { events.push(doc.data() as FeaturedEvent); });
 
-          // nowfutbol: ya tienen campo `order`, los ponemos primero
           const nowfutbolFolders: ChannelFolder[] = [];
           nowfutbolQuery.forEach((doc) => { nowfutbolFolders.push(doc.data() as ChannelFolder); });
 
-          // angulismo: query separada para que un error no rompa todo
           let uniqueAngulismo: ChannelFolder[] = [];
           try {
             const angulismoQuery = await getDocs(collection(db, 'channelFolders'));
@@ -210,7 +207,12 @@ export const useAppStore = create<AppState>()(
 
           const mergedFolders: ChannelFolder[] = [...nowfutbolFolders, ...uniqueAngulismo];
 
-          set({ cloudContent: items, featuredEvents: events, channelFolders: mergedFolders, isLoadingContent: false });
+          set({
+            cloudContent: items,
+            featuredEvents: events,
+            channelFolders: mergedFolders,
+            isLoadingContent: false,
+          });
         } catch (error) {
           console.error("Error al descargar catálogo:", error);
           set({ isLoadingContent: false });
@@ -220,7 +222,7 @@ export const useAppStore = create<AppState>()(
     {
       name: 'vortex-storage', // Nombre de la base local
       storage: createJSONStorage(() => AsyncStorage),
-      // 🔥 Le decimos a Zustand que SOLO guarde estas cosas en el disco duro, no toda la base de datos de Firebase
+      // Solo persistimos datos del usuario — el catálogo siempre viene fresco de Firestore
       partialize: (state) => ({
         myList: state.myList,
         watchedEpisodes: state.watchedEpisodes,
