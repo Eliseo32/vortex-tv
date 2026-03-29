@@ -1,30 +1,58 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, FlatList, ActivityIndicator, StyleSheet, BackHandler } from 'react-native';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import {
+  View, Text, FlatList, ActivityIndicator,
+  StyleSheet, BackHandler, Animated,
+} from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { WebView } from 'react-native-webview';
 import { ShieldCheck, Users } from 'lucide-react-native';
-import { collection, onSnapshot, query, orderBy, doc, setDoc, updateDoc } from 'firebase/firestore';
+import {
+  collection, onSnapshot, query, orderBy,
+  doc, updateDoc,
+} from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { useAppStore } from '../../store/useAppStore';
 import { Video, ResizeMode } from 'expo-av';
 
+
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+// ─── Mensaje flotante estilo Twitch ───────────────────────────────────────────
+const FloatingMessage = ({ msg }: { msg: any }) => {
+  const fade = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.timing(fade, { toValue: 1, duration: 300, useNativeDriver: true }),
+      Animated.delay(5000),
+      Animated.timing(fade, { toValue: 0, duration: 800, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
+  return (
+    <Animated.View style={[fs.floatMsg, { opacity: fade }]}>
+      <Text style={fs.floatUser}>{msg.user}:</Text>
+      <Text style={fs.floatText}> {msg.text}</Text>
+    </Animated.View>
+  );
+};
 
 export default function TvPartyPlayerScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const webViewRef = useRef<WebView>(null);
-  const flatListRef = useRef<FlatList>(null);
   const videoRef = useRef<Video>(null);
+  const lastSyncTime = useRef(0);
 
   const { videoUrl, roomCode, isHost } = route.params;
   const currentProfile = useAppStore(state => state.currentProfile);
+  const displayName = currentProfile?.name || 'Invitado';
 
   const [messages, setMessages] = useState<any[]>([]);
   const [partyState, setPartyState] = useState<any>(null);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
-  const lastSyncTime = useRef(0);
+
 
   let cleanUrl = videoUrl ? videoUrl.trim() : '';
   if (cleanUrl && cleanUrl.startsWith('//')) cleanUrl = 'https:' + cleanUrl;
@@ -35,329 +63,76 @@ export default function TvPartyPlayerScreen() {
   const isLamovie = urlToPlay.toLowerCase().includes('lamovie') || urlToPlay.toLowerCase().includes('lamov');
   const timeoutDuration = isLamovie ? 35000 : 10000;
 
+  // ─── Firestore: Init (Host) / Subscribe (Guest) ──────────────────────────────
   useEffect(() => {
     if (!roomCode) return;
     if (isHost) {
-      setDoc(doc(db, 'parties', roomCode), {
-        state: { isPlaying: true, currentTime: 0, videoUrl: cleanUrl }
-      }, { merge: true });
+      updateDoc(doc(db, 'parties', roomCode), {
+        isPlaying: true, currentTime: 0, updatedAt: Date.now(),
+      }).catch(() => {});
     } else {
-      const unsubscribeState = onSnapshot(doc(db, 'parties', roomCode), (docSnap) => {
-        if (docSnap.exists() && docSnap.data().state) {
-          setPartyState(docSnap.data().state);
-        }
+      const unsub = onSnapshot(doc(db, 'parties', roomCode), snap => {
+        if (snap.exists()) setPartyState(snap.data());
       });
-      return () => unsubscribeState();
+      return () => unsub();
     }
   }, [roomCode, isHost]);
 
-  const updatePlaybackState = (playing: boolean, time: number) => {
-    if (!isHost || !roomCode) return;
-    const now = Date.now();
-    if (now - lastSyncTime.current > 1000) {
-      updateDoc(doc(db, 'parties', roomCode), {
-        'state.isPlaying': playing,
-        'state.currentTime': time
-      }).catch(() => { });
-      lastSyncTime.current = now;
-    }
-  };
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const lockTimer = setTimeout(() => { if (isMounted) setIsLocked(true); }, 2000);
-    const failSafeTimer = setTimeout(() => { if (isMounted) setIsVideoPlaying(true); }, timeoutDuration);
-
-    return () => {
-      isMounted = false;
-      clearTimeout(lockTimer);
-      clearTimeout(failSafeTimer);
-    };
-  }, []);
-
-  useEffect(() => {
-    const backAction = () => { navigation.goBack(); return true; };
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
-    return () => backHandler.remove();
-  }, [navigation]);
-
+  // ─── Firestore: mensajes en tiempo real ─────────────────────────────────────
   useEffect(() => {
     if (!roomCode) return;
     const q = query(collection(db, 'parties', roomCode, 'messages'), orderBy('createdAt', 'asc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const loadedMessages = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        isMe: doc.data().user === (currentProfile?.name || 'Invitado')
+    const unsub = onSnapshot(q, snap => {
+      const msgs = snap.docs.map(d => ({
+        id: d.id, ...d.data(),
+        isMe: d.data().user === displayName,
       }));
-      setMessages(loadedMessages);
+      setMessages(msgs);
     });
-    return () => unsubscribe();
-  }, [roomCode]);
+    return () => unsub();
+  }, [roomCode, displayName]);
 
-  const beforeLoadJS = `
-    window.open = function() { return null; };
-    window.alert = function() { return null; };
-    window.confirm = function() { return null; };
-    window.prompt = function() { return null; };
-    
-    if (window.HTMLVideoElement) {
-      window.HTMLVideoElement.prototype.webkitShowPlaybackTargetPicker = function() { return null; };
+  // ─── Sincronizar Guest cuando partyState cambia ─────────────────────────────
+  useEffect(() => {
+    if (!isHost && partyState && webViewRef.current && isVideoPlaying) {
+      webViewRef.current.injectJavaScript(`
+        var v=document.querySelector('video');
+        if(v){
+          if(${partyState.isPlaying}&&v.paused)v.play();
+          else if(!${partyState.isPlaying}&&!v.paused)v.pause();
+          if(Math.abs(v.currentTime-${partyState.currentTime})>3)v.currentTime=${partyState.currentTime};
+        }
+      `);
     }
-    window.WebKitPlaybackTargetAvailabilityEvent = undefined;
+  }, [partyState, isHost, isVideoPlaying]);
 
-    document.addEventListener('click', function(e) {
-      const target = e.target.closest('a');
-      if (target) {
-        e.preventDefault(); 
-        e.stopPropagation();
-      }
-    }, true);
+  // ─── Actualizar Firestore (Host escribe estado) ─────────────────────────────
+  const updatePlaybackState = useCallback((playing: boolean, time: number) => {
+    if (!isHost || !roomCode) return;
+    const now = Date.now();
+    if (now - lastSyncTime.current < 1000) return;
+    lastSyncTime.current = now;
+    updateDoc(doc(db, 'parties', roomCode), {
+      isPlaying: playing, currentTime: time, updatedAt: now,
+    }).catch(() => {});
+  }, [isHost, roomCode]);
 
-    window.chrome = window.chrome || {};
-    window.chrome.cast = { isAvailable: false };
-    true;
-  `;
 
-  const afterLoadJS = `
-    (function() {
-      document.body.style.backgroundColor = '#000';
-      document.body.style.overflow = 'hidden';
-      
-      let isPlayingNotified = false;
-      let fullscreenClicked = false;
-      let attempts = 0;
-      let fastInterval;
 
-      const isHost = ${isHost ? 'true' : 'false'};
+  // ─── Timers ──────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    let m = true;
+    const t1 = setTimeout(() => { if (m) setIsLocked(true); }, 2000);
+    const t2 = setTimeout(() => { if (m) setIsVideoPlaying(true); }, timeoutDuration);
+    return () => { m = false; clearTimeout(t1); clearTimeout(t2); };
+  }, []);
 
-      const applyHostListeners = (v) => {
-          if (!isHost || v.dataset.hostAttached) return;
-          v.dataset.hostAttached = 'true';
-          v.addEventListener('play', function() { window.ReactNativeWebView.postMessage('syncState:true,' + v.currentTime); });
-          v.addEventListener('pause', function() { window.ReactNativeWebView.postMessage('syncState:false,' + v.currentTime); });
-          v.addEventListener('seeked', function() { window.ReactNativeWebView.postMessage('syncState:' + (!v.paused) + ',' + v.currentTime); });
-          let lastTimeSync = 0;
-          v.addEventListener('timeupdate', function() {
-              if (Date.now() - lastTimeSync > 1000) {
-                 window.ReactNativeWebView.postMessage('syncState:' + (!v.paused) + ',' + v.currentTime); 
-                 lastTimeSync = Date.now();
-              }
-          });
-      };
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => { navigation.goBack(); return true; });
+    return () => sub.remove();
+  }, [navigation]);
 
-      window.addEventListener('message', function(e) {
-        if (e.data === 'APAGAR_ESCANER') clearInterval(fastInterval);
-        if (e.data === 'video_playing_relay') {
-          if (!isPlayingNotified) {
-            isPlayingNotified = true;
-            try { window.ReactNativeWebView.postMessage('video_playing'); } catch(err) {}
-          }
-        }
-      });
-
-      const triggerPlaybackFound = (videoEl) => {
-        if (isPlayingNotified) return;
-        isPlayingNotified = true;
-        
-        try { window.ReactNativeWebView.postMessage('video_playing'); } catch(e) {}
-        try { window.top.postMessage('video_playing_relay', '*'); } catch(e) {}
-        
-        if (!fullscreenClicked) {
-          const fsBtn = document.querySelector('.vjs-fullscreen-control, .jw-icon-fullscreen, .plyr__control[data-plyr="fullscreen"], .vp-fullscreen, .fullscreen-button, .fs-btn, .fp-fullscreen, .dplayer-full-icon, .mac_fullscreen, [title*="Full" i], [title*="completa" i], [aria-label*="Full" i], [aria-label*="completa" i], button[class*="fullscreen" i], [class*="fullscreen" i] button');
-          if(fsBtn) {
-            try { fsBtn.click(); fullscreenClicked = true; } catch(e) {}
-          }
-        }
-
-        if (videoEl) {
-          try {
-            if (videoEl.requestFullscreen) videoEl.requestFullscreen();
-            else if (videoEl.webkitEnterFullscreen) videoEl.webkitEnterFullscreen();
-          } catch(e) {}
-
-          videoEl.style.position = 'fixed';
-          videoEl.style.top = '0';
-          videoEl.style.left = '0';
-          videoEl.style.width = '100vw';
-          videoEl.style.height = '100vh';
-          videoEl.style.zIndex = '99999999';
-          videoEl.style.backgroundColor = '#000';
-          videoEl.style.objectFit = 'contain';
-        }
-
-        try { window.top.postMessage('APAGAR_ESCANER', '*'); } catch(e) {}
-        clearInterval(fastInterval);
-      };
-
-      const skipKeywords = ['skip', 'saltar', 'omitir', 'close', 'cerrar', 'x', 'ad-skip', 'skip-ad'];
-      const playSelectors = [
-        '.vjs-big-play-button', '.jw-icon-display', '.plyr__control--overlaid', 
-        '.play-btn', '#play-button', '.voe-play', '.vjs-play-control', 
-        '.vp-video-wrapper', '.vp-telecine', '#player-preload', '.play-button', 
-        '.button-play', '.vjs-tech'
-      ];
-      
-      const attemptUnmute = () => {
-          const unmuteSelectors = [
-              '.clappr-unmute', '.vjs-mute-control', '.jw-icon-vol-off', 
-              '[aria-label="Unmute"]', '[aria-label="Desactivar silencio"]', 
-              '.mute-button', '.volume-control', '.plyr__control[data-plyr="mute"]',
-              '.dplayer-volume-icon', 'button.unmute', '.sound-button'
-          ];
-          
-          if (window.player && typeof window.player.setVolume === 'function') {
-              try {
-                  window.player.setVolume(100);
-                  if (typeof window.player.configure === 'function') {
-                      window.player.configure({mute: false});
-                  }
-              } catch(e) {}
-          }
-          
-          unmuteSelectors.forEach(sel => {
-              const btn = document.querySelector(sel);
-              if (btn && window.getComputedStyle(btn).display !== 'none') {
-                  try { btn.click(); } catch(e) {}
-              }
-          });
-          
-          const overlays = document.querySelectorAll('div, span, button');
-          overlays.forEach(el => {
-              const text = (el.innerText || '').toLowerCase();
-              if (text.includes('unmute') || text === 'haz clic para activar el sonido' || text.includes('tap to unmute') || text.includes('click to')) {
-                  try { el.click(); } catch(e) {}
-              }
-          });
-      };
-
-      function cleanOverlays() {
-        const elements = document.querySelectorAll('div, a, button, span');
-        elements.forEach(el => {
-          const style = window.getComputedStyle(el);
-          const zIndex = parseInt(style.zIndex);
-          const text = (el.innerText || '').toLowerCase();
-          const className = (el.className || '').toString().toLowerCase();
-
-          if (skipKeywords.some(w => text.includes(w) || className.includes(w))) {
-            try { el.click(); } catch(e) {}
-          }
-
-          if ((style.position === 'absolute' || style.position === 'fixed') && zIndex > 90) {
-            if (!el.querySelector('video') && !el.querySelector('iframe')) {
-              el.style.pointerEvents = 'none'; 
-              if (!skipKeywords.some(w => text.includes(w))) {
-                el.remove();
-              }
-            }
-          }
-        });
-      }
-
-      const startPlayer = () => {
-        if (isPlayingNotified) return;
-        if (attempts > 35) { clearInterval(fastInterval); return; }
-
-        cleanOverlays();
-
-        const video = document.querySelector('video');
-        const iframe = document.querySelector('iframe');
-        
-        const castButtons = document.querySelectorAll('.jw-icon-airplay, .jw-icon-cast, .vjs-chromecast-button, google-cast-launcher, [aria-label*="AirPlay"], [aria-label*="Cast"]');
-        castButtons.forEach(btn => btn.remove());
-
-        // 1. CLICK AL BOTON DE PANTALLA COMPLETA DIRECTAMENTE AL CARGAR
-        if (!fullscreenClicked) {
-          const fsBtn = document.querySelector('.vjs-fullscreen-control, .jw-icon-fullscreen, .plyr__control[data-plyr="fullscreen"], .vp-fullscreen, .fullscreen-button, .fs-btn, .fp-fullscreen, .dplayer-full-icon, .mac_fullscreen, [title*="Full" i], [title*="completa" i], [aria-label*="Full" i], [aria-label*="completa" i], button[class*="fullscreen" i], [class*="fullscreen" i] button');
-          if (fsBtn) {
-            try { 
-              fsBtn.click(); 
-              fullscreenClicked = true; 
-            } catch(e) {}
-          }
-        }
-
-        if (!video && iframe) {
-           iframe.style.position = 'fixed';
-           iframe.style.top = '0';
-           iframe.style.left = '0';
-           iframe.style.width = '100vw';
-           iframe.style.height = '100vh';
-           iframe.style.zIndex = '999999';
-           iframe.style.backgroundColor = '#000';
-           iframe.style.border = 'none';
-        }
-
-        if (video) {
-          video.removeAttribute('x-webkit-airplay');
-          video.setAttribute('disableRemotePlayback', 'true');
-          video.setAttribute('x-webkit-airplay', 'deny');
-          video.setAttribute('playsinline', 'true');
-          video.setAttribute('webkit-playsinline', 'true');
-
-          if (!video.hasAttribute('data-listeners-attached')) {
-            video.setAttribute('data-listeners-attached', 'true');
-            video.addEventListener('playing', () => triggerPlaybackFound(video));
-            video.addEventListener('timeupdate', () => {
-              if (video.currentTime > 0.1) triggerPlaybackFound(video);
-            });
-            if (video.readyState >= 3) triggerPlaybackFound(video);
-            applyHostListeners(video);
-          }
-
-          if (video.paused && attempts > 1) {
-            video.play().catch(e => {});
-          }
-          
-          const isActuallyPlaying = !video.paused && (video.currentTime > 0.1 || video.readyState > 2);
-          
-          if (isActuallyPlaying && !isPlayingNotified) {
-             triggerPlaybackFound(video);
-          }
-        } 
-        
-        if (attempts > 1 && !isPlayingNotified) {
-          playSelectors.forEach(selector => {
-            const btn = document.querySelector(selector);
-            if (btn && (!btn.className || (!btn.className.includes('cast') && !btn.className.includes('airplay')))) {
-               try { btn.click(); } catch(e) {}
-            }
-          });
-        }
-        
-        attemptUnmute();
-        attempts++;
-      };
-
-      fastInterval = setInterval(startPlayer, 800); 
-
-      // PROTECCIÓN DE CONTROL REMOTO TV
-      const blockAdsOnEnter = function(e) {
-        if(e.key === 'Enter' || e.keyCode === 13 || e.keyCode === 66 || e.keyCode === 23) {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-        }
-      };
-
-      window.addEventListener('keydown', function(e) {
-        if(e.key === 'Enter' || e.keyCode === 13 || e.keyCode === 66 || e.keyCode === 23) {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          const v = document.querySelector('video');
-          if(v) { 
-            if(v.paused) v.play(); else v.pause(); 
-          } 
-        }
-      }, true);
-      
-      window.addEventListener('keyup', blockAdsOnEnter, true);
-      window.addEventListener('keypress', blockAdsOnEnter, true);
-
-    })();
-    true;
-  `;
-
+  // ─── WebView Messages ──────────────────────────────────────────────────────
   const handleMessage = (event: any) => {
     const data = event.nativeEvent.data;
     if (data === 'video_playing') {
@@ -370,134 +145,199 @@ export default function TvPartyPlayerScreen() {
     }
   };
 
-  useEffect(() => {
-    if (!isHost && partyState && webViewRef.current && isVideoPlaying) {
-      const jsCmd = `
-          var v = document.querySelector('video');
-          if(v) {
-              if(${partyState.isPlaying} && v.paused) v.play();
-              else if(!${partyState.isPlaying} && !v.paused) v.pause();
-              
-              var diff = Math.abs(v.currentTime - ${partyState.currentTime});
-              if(diff > 3.0) v.currentTime = ${partyState.currentTime};
-          }
-       `;
-      webViewRef.current.injectJavaScript(jsCmd);
-    }
-  }, [partyState, isHost, isVideoPlaying]);
-
-  const handleShouldStartLoadWithRequest = (request: any) => {
-    const url = request.url.toLowerCase();
-
-    if (url.includes('vimeus') || url.includes('adcash') || url.includes('popads')) return false;
-    if (url.startsWith('intent://') || url.startsWith('market://') || url.includes('play.google.com')) return false;
-
-    if (isLocked && request.isTopFrame) {
-      const originalDomain = cleanUrl.split('/')[2];
-      if (originalDomain && !url.includes(originalDomain) && !url.includes('about:blank') && !url.includes('vimeo.com') && !url.includes('mp4')) return false;
+  const handleShouldStartLoad = (req: any) => {
+    const url = req.url.toLowerCase();
+    if (url.includes('adcash') || url.includes('popads') || url.startsWith('intent://') || url.startsWith('market://')) return false;
+    if (isLocked && req.isTopFrame) {
+      const domain = cleanUrl.split('/')[2];
+      if (domain && !url.includes(domain) && !url.includes('vimeo.com') && !url.includes('mp4')) return false;
     }
     return true;
   };
 
-  const isWaitScreenVisible = !isDirect && !isVideoPlaying;
+  const isWaiting = !isDirect && !isVideoPlaying;
+
+  // ─── JS Inyectado ──────────────────────────────────────────────────────────
+  // NO intercepta teclas: el control nativo funciona normal.
+  // Solo escucha eventos play/pause/timeupdate del <video> para sincronizar a Firestore.
+  const beforeLoadJS = `
+    window.open=function(){return null};
+    window.alert=function(){};window.confirm=function(){};window.prompt=function(){};
+    document.addEventListener('click',function(e){var a=e.target.closest('a');if(a){e.preventDefault();e.stopPropagation();}},true);
+    true;
+  `;
+
+  const afterLoadJS = `
+    (function(){
+      document.body.style.backgroundColor='#000';
+      document.body.style.overflow='hidden';
+      var notified=false,attempts=0;
+      var isHost=${isHost ? 'true' : 'false'};
+
+      function found(v){
+        if(notified)return; notified=true;
+        window.ReactNativeWebView.postMessage('video_playing');
+        if(v){
+          v.style.cssText='position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:9999999;background:#000;object-fit:contain;';
+          try{v.requestFullscreen&&v.requestFullscreen();}catch(e){}
+        }
+      }
+
+      // Host: escuchar play/pause/seek nativos y reportar a RN → Firestore
+      function attachHost(v){
+        if(!isHost||v.dataset.ha)return; v.dataset.ha='1';
+        v.addEventListener('play',function(){window.ReactNativeWebView.postMessage('syncState:true,'+v.currentTime);});
+        v.addEventListener('pause',function(){window.ReactNativeWebView.postMessage('syncState:false,'+v.currentTime);});
+        v.addEventListener('seeked',function(){window.ReactNativeWebView.postMessage('syncState:'+(!v.paused)+','+v.currentTime);});
+        var lt=0;
+        v.addEventListener('timeupdate',function(){
+          if(Date.now()-lt>3000){window.ReactNativeWebView.postMessage('syncState:'+(!v.paused)+','+v.currentTime);lt=Date.now();}
+        });
+      }
+
+      var t=setInterval(function(){
+        if(notified||attempts>40){clearInterval(t);return;} attempts++;
+        var v=document.querySelector('video');
+        var iframe=document.querySelector('iframe');
+        if(v){
+          if(!v.dataset.la){
+            v.dataset.la='1';
+            v.addEventListener('playing',function(){found(v);});
+            v.addEventListener('timeupdate',function(){if(v.currentTime>.1)found(v);});
+            if(v.readyState>=3)found(v);
+            attachHost(v);
+          }
+          if(v.paused&&attempts>2)try{v.play();}catch(e){}
+        }
+        if(!v&&iframe){Object.assign(iframe.style,{position:'fixed',top:'0',left:'0',width:'100vw',height:'100vh',zIndex:'99999',border:'none',background:'#000'});}
+      },800);
+
+    })();true;
+  `;
+
+  // Solo mostrar los últimos 5 mensajes (los más recientes flotan)
+  const recentMessages = messages.slice(-5);
 
   return (
-    <View className="flex-1 bg-black flex-row">
+    <View style={fs.root}>
 
-      {/* SECCIÓN DEL REPRODUCTOR (Ocupa el 75%) */}
-      <View style={{ flex: 0.75 }} className="bg-black relative">
-        {isDirect ? (
-          <Video
-            ref={videoRef}
-            source={{ uri: cleanUrl }}
-            style={StyleSheet.absoluteFillObject}
-            useNativeControls={true}
-            resizeMode={ResizeMode.CONTAIN}
-            shouldPlay={isHost ? true : false}
-            onPlaybackStatusUpdate={(status: any) => {
-              if (!status.isLoaded) return;
-              if (isHost && roomCode) {
-                updatePlaybackState(status.isPlaying, status.positionMillis / 1000);
-              } else if (!isHost && partyState && videoRef.current) {
-                if (partyState.isPlaying !== status.isPlaying) {
-                  if (partyState.isPlaying) videoRef.current.playAsync();
-                  else videoRef.current.pauseAsync();
-                }
-                const diff = Math.abs((status.positionMillis / 1000) - partyState.currentTime);
-                if (diff > 3.0) videoRef.current.setPositionAsync(partyState.currentTime * 1000);
-              }
-            }}
+      {/* ── VIDEO (ocupa todo) ─────────────────────────────────────────── */}
+      {isDirect ? (
+        <Video
+          ref={videoRef}
+          source={{ uri: cleanUrl }}
+          style={StyleSheet.absoluteFillObject}
+          useNativeControls
+          resizeMode={ResizeMode.CONTAIN}
+          shouldPlay={isHost}
+          onPlaybackStatusUpdate={(status: any) => {
+            if (!status.isLoaded) return;
+            if (isHost) updatePlaybackState(status.isPlaying, status.positionMillis / 1000);
+            else if (!isHost && partyState && videoRef.current) {
+              if (partyState.isPlaying !== status.isPlaying)
+                partyState.isPlaying ? videoRef.current.playAsync() : videoRef.current.pauseAsync();
+              if (Math.abs((status.positionMillis / 1000) - partyState.currentTime) > 3)
+                videoRef.current.setPositionAsync(partyState.currentTime * 1000);
+            }
+          }}
+        />
+      ) : (
+        <>
+          {isWaiting && (
+            <View style={fs.loadingOverlay}>
+              <ActivityIndicator size="large" color="#B026FF" />
+              <Text style={fs.loadingText}>Preparando Sala...</Text>
+            </View>
+          )}
+          <WebView
+            ref={webViewRef}
+            source={{ uri: cleanUrl, headers: { Referer: cleanUrl.split('/').slice(0, 3).join('/') + '/' } }}
+            style={{ flex: 1, backgroundColor: '#000', opacity: isWaiting ? 0 : 1 }}
+            userAgent={CHROME_UA}
+            allowsFullscreenVideo
+            allowsInlineMediaPlayback
+            mediaPlaybackRequiresUserAction={false}
+            allowsAirPlayForMediaPlayback={false}
+            domStorageEnabled javaScriptEnabled thirdPartyCookiesEnabled sharedCookiesEnabled
+            androidLayerType="hardware"
+            mixedContentMode="always"
+            injectedJavaScriptBeforeContentLoaded={beforeLoadJS}
+            injectedJavaScript={afterLoadJS}
+            injectedJavaScriptForMainFrameOnly={false}
+            onMessage={handleMessage}
+            originWhitelist={['*']}
+            setSupportMultipleWindows={false}
+            onShouldStartLoadWithRequest={handleShouldStartLoad}
           />
-        ) : (
-          <View style={StyleSheet.absoluteFillObject} className="bg-black">
-            {isWaitScreenVisible && (
-              <View style={StyleSheet.absoluteFillObject} className="bg-[#050505] items-center justify-center z-40 absolute">
-                <ActivityIndicator size="large" color="#B026FF" className="mb-6" />
-                <Text className="text-vortex-primary font-black text-xl tracking-widest uppercase">
-                  Preparando Sala y Video...
-                </Text>
-              </View>
-            )}
+        </>
+      )}
 
-            <WebView
-              ref={webViewRef}
-              source={{
-                uri: cleanUrl,
-                headers: {
-                  'Referer': cleanUrl.split('/').slice(0, 3).join('/') + '/'
-                }
-              }}
-              style={{ flex: 1, backgroundColor: 'black', opacity: isWaitScreenVisible ? 0 : 1 }}
-              allowsFullscreenVideo={true}
-              allowsInlineMediaPlayback={true}
-              mediaPlaybackRequiresUserAction={false}
-              allowsAirPlayForMediaPlayback={false}
-              domStorageEnabled={true}
-              javaScriptEnabled={true}
-              thirdPartyCookiesEnabled={true}
-              sharedCookiesEnabled={true}
-              androidLayerType="hardware"
-              mixedContentMode="always"
-              injectedJavaScriptBeforeContentLoaded={beforeLoadJS}
-              injectedJavaScript={afterLoadJS}
-              injectedJavaScriptForMainFrameOnly={false}
-              onMessage={handleMessage}
-              originWhitelist={['*']}
-              setSupportMultipleWindows={false}
-              javaScriptCanOpenWindowsAutomatically={false}
-              onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
-            />
+      {/* ── CHAT FLOTANTE ESTILO TWITCH (mensajes transparentes) ──────── */}
+      <View style={fs.floatChat} pointerEvents="none">
+        {recentMessages.map(msg => (
+          <FloatingMessage key={msg.id} msg={msg} />
+        ))}
+      </View>
+
+      {/* ── INDICADOR SALA + HOST BADGE (esquina superior derecha) ────── */}
+      <View style={fs.roomBadge}>
+        <Users color="#B026FF" size={14} />
+        <Text style={fs.roomBadgeText}>{roomCode}</Text>
+        {isHost && (
+          <View style={fs.hostTag}>
+            <ShieldCheck size={10} color="#B026FF" />
+            <Text style={fs.hostTagText}>HOST</Text>
           </View>
         )}
       </View>
 
-      {/* SECCIÓN DEL CHAT LADO DERECHO (Ocupa el 25%) */}
-      <View style={{ flex: 0.25 }} className="bg-[#111] border-l border-white/10 pt-8 px-4 pb-4">
-        <View className="flex-row items-center justify-center mb-6 border-b border-white/10 pb-6">
-          <Users color="#A855F7" size={24} />
-          <Text className="text-white font-black text-xl ml-3">Sala <Text className="text-purple-400">{roomCode}</Text></Text>
-        </View>
 
-        <FlatList
-          ref={flatListRef} data={messages} keyExtractor={(item, index) => item.id || index.toString()} showsVerticalScrollIndicator={false}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
-          ListEmptyComponent={<Text className="text-gray-500 text-center mt-10">La sala está vacía. Invita a tus amigos.</Text>}
-          renderItem={({ item }) => (
-            <View className={`mb - 4 ${item.isMe ? 'self-end' : 'self-start'} `}>
-              <Text className={`text - [10px] mb - 1 font - bold ${item.isMe ? 'hidden' : 'text-purple-400'} `}>{item.user}</Text>
-              <View className={`px - 4 py - 3 rounded - 2xl max - w - [90 %] ${item.isMe ? 'bg-purple-600 rounded-tr-sm' : 'bg-gray-800 rounded-tl-sm'} `}>
-                <Text className="text-white text-sm font-medium">{item.text}</Text>
-              </View>
-            </View>
-          )}
-        />
-
-        <View className="mt-4 bg-[#222] p-4 rounded-xl border border-white/5 items-center">
-          <Text className="text-gray-400 text-xs text-center font-bold">Modo Lectura (TV)</Text>
-          <Text className="text-gray-500 text-[10px] text-center mt-1">Usa tu teléfono para enviar mensajes al chat.</Text>
-        </View>
-      </View>
 
     </View>
   );
 }
+
+// ─── Estilos ────────────────────────────────────────────────────────────────
+const fs = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#000' },
+
+  // Loading
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject, backgroundColor: '#050505',
+    alignItems: 'center', justifyContent: 'center', zIndex: 50,
+  },
+  loadingText: { color: '#B026FF', fontWeight: '900', fontSize: 16, marginTop: 14, letterSpacing: 2 },
+
+  // Chat flotante transparente (Twitch-style)
+  floatChat: {
+    position: 'absolute', bottom: 80, left: 20,
+    maxWidth: '50%',
+  },
+  floatMsg: {
+    flexDirection: 'row', flexWrap: 'wrap',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 8, marginBottom: 6,
+    alignSelf: 'flex-start',
+  },
+  floatUser: { color: '#B026FF', fontWeight: '800', fontSize: 13 },
+  floatText: { color: '#e5e7eb', fontWeight: '500', fontSize: 13 },
+
+  // Room badge (esquina superior derecha)
+  roomBadge: {
+    position: 'absolute', top: 16, right: 16,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
+  },
+  roomBadgeText: { color: '#e5e7eb', fontSize: 12, fontWeight: '700' },
+  hostTag: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: 'rgba(176,38,255,0.2)',
+    borderWidth: 1, borderColor: 'rgba(176,38,255,0.4)',
+    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 12,
+  },
+  hostTagText: { color: '#B026FF', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
+
+
+});

@@ -24,13 +24,13 @@ const BORDER_CARD = 'rgba(255,255,255,0.06)';
 
 // ─── Mismos filtros de categoría que TvSportsScreen ───────────────────────────
 const FILTER_CATEGORIES = [
-    { id: 'all', label: 'All' },
-    { id: 'live', label: 'LIVE' },
-    { id: 'futbol', label: 'Football' },
-    { id: 'f1', label: 'Motorsport' },
-    { id: 'nba', label: 'Basketball' },
-    { id: 'tennis', label: 'Tennis' },
-    { id: 'other', label: 'Other' },
+    { id: 'all', label: 'Todos' },
+    { id: 'live', label: 'En Vivo' },
+    { id: 'futbol', label: 'Fútbol' },
+    { id: 'f1', label: 'Motor' },
+    { id: 'nba', label: 'Básquet' },
+    { id: 'tennis', label: 'Tenis' },
+    { id: 'other', label: 'Otros' },
 ];
 
 function matchesCategory(event: any, catId: string): boolean {
@@ -45,17 +45,20 @@ function matchesCategory(event: any, catId: string): boolean {
     return false;
 }
 
-// ─── FilterPill — igual que TvSportsScreen ────────────────────────────────────
+// ─── FilterPill — Rediseño Tipográfico ─────────────────────────────────────────
 const FilterPill = React.memo(function FilterPill({ item, isActive, onPress }: { item: any; isActive: boolean; onPress: () => void }) {
     return (
-        <TvFocusable onPress={onPress} borderWidth={0} scaleTo={1.08} style={{ borderRadius: 24, marginRight: 10 }}>
+        <TvFocusable onPress={onPress} borderWidth={0} scaleTo={1.1} style={{ borderRadius: 30, marginRight: 14 }}>
             {(focused: boolean) => (
                 <View style={{
-                    paddingHorizontal: 18, paddingVertical: 8, borderRadius: 24,
-                    backgroundColor: isActive ? ACCENT : focused ? ACCENT_DIM : 'rgba(255,255,255,0.05)',
-                    borderWidth: 1.5, borderColor: isActive ? ACCENT : focused ? ACCENT : BORDER_CARD,
+                    paddingHorizontal: 22, paddingVertical: 10, borderRadius: 30,
+                    backgroundColor: isActive ? 'rgba(0, 227, 253, 0.15)' : focused ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+                    borderWidth: 2, borderColor: isActive ? '#00e3fd' : focused ? '#fff' : 'rgba(255,255,255,0.05)',
                 }}>
-                    <Text style={{ color: isActive ? '#fff' : focused ? ACCENT : TEXT_SECONDARY, fontSize: 13, fontWeight: isActive ? '800' : '600', letterSpacing: 0.3 }}>
+                    <Text style={{
+                        color: isActive ? '#00e3fd' : focused ? '#fff' : '#aaaab7',
+                        fontSize: 14, fontWeight: isActive ? '900' : '700', letterSpacing: 1, textTransform: 'uppercase'
+                    }}>
                         {item.label}
                     </Text>
                 </View>
@@ -64,119 +67,71 @@ const FilterPill = React.memo(function FilterPill({ item, isActive, onPress }: {
     );
 });
 
-// ─── AgendaMatchCard — Rediseño Aura Cinematic (con logos de equipos) ─────────
+// ─── AgendaMatchCard — Rediseño Aura Cinematic (Pura Tipografía) ─────────────
 const AgendaMatchCard = React.memo(function AgendaMatchCard({ event, onPress }: { event: any; onPress: () => void }) {
     const hasVideo = !!event.videoUrl;
     const isLive = (event.status || '').toLowerCase().includes('vivo');
     const serverCount = Array.isArray(event.servers) ? event.servers.length : 0;
 
     return (
-        <TvFocusable onPress={onPress} borderWidth={0} scaleTo={1.05} style={{ borderRadius: 20, marginRight: 16 }} focusedStyle={{}}>
+        <TvFocusable onPress={onPress} borderWidth={0} scaleTo={1.05} style={{ borderRadius: 16, marginRight: 24 }}>
             {(focused: boolean) => (
                 <View style={{
-                    width: 260,
-                    borderRadius: 20,
+                    width: 360,
+                    height: 200,
+                    borderRadius: 16,
+                    padding: 24,
                     overflow: 'hidden',
-                    borderWidth: focused ? 2 : 1,
-                    borderColor: focused ? ACCENT : 'rgba(255,255,255,0.07)',
-                    backgroundColor: focused ? 'rgba(18, 22, 40, 0.98)' : 'rgba(14, 17, 30, 0.95)',
-                    elevation: focused ? 12 : 0,
+                    backgroundColor: focused ? 'rgba(28, 31, 43, 0.95)' : 'rgba(17, 19, 29, 0.85)',
+                    borderWidth: 2,
+                    borderColor: focused ? '#b6a0ff' : 'transparent', // Resplandor primary
+                    elevation: focused ? 20 : 0,
+                    justifyContent: 'space-between'
                 }}>
-                    {/* Franja superior de color */}
-                    <View style={{ height: 3, backgroundColor: isLive ? LIVE_RED : (focused ? ACCENT : 'rgba(99,102,241,0.4)') }} />
+                    {/* Ghost highlight en focus */}
+                    {focused && (
+                        <View style={{ position: 'absolute', top: -100, left: -50, width: 200, height: 200, backgroundColor: 'rgba(182, 160, 255, 0.15)', borderRadius: 100 }} />
+                    )}
 
-                    {/* Cabecera: hora + liga + estado */}
-                    <View style={{
-                        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                        paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10,
-                    }}>
-                        {/* Liga */}
-                        <View style={{ flex: 1, marginRight: 8 }}>
-                            <Text numberOfLines={1} style={{
-                                color: focused ? ACCENT : TEXT_SECONDARY,
-                                fontSize: 9, fontWeight: '900', letterSpacing: 1.5,
-                                textTransform: 'uppercase',
-                            }}>
-                                {event.league || event.category || 'SPORT'}
-                            </Text>
-                        </View>
+                    {/* Cabecera: Liga + Estado */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <Text numberOfLines={1} style={{
+                            color: '#aaaab7', fontSize: 11, fontWeight: '800', letterSpacing: 2, textTransform: 'uppercase', flex: 1, marginRight: 12
+                        }}>
+                            {event.league || event.category || 'SPORT'}
+                        </Text>
+                        
+                        <Text style={{ color: isLive ? '#ff4444' : '#00e3fd', fontSize: 13, fontWeight: '900', letterSpacing: 1 }}>{event.time}</Text>
+                    </View>
 
-                        {/* Estado o hora */}
-                        {isLive ? (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: LIVE_DIM, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, borderWidth: 1, borderColor: LIVE_RED }}>
-                                <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: LIVE_RED }} />
-                                <Text style={{ color: LIVE_RED, fontSize: 8, fontWeight: '900', letterSpacing: 1 }}>EN VIVO</Text>
-                            </View>
-                        ) : (
-                            <View style={{ backgroundColor: focused ? ACCENT : 'rgba(99,102,241,0.15)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 }}>
-                                <Text style={{ color: focused ? '#fff' : ACCENT, fontSize: 11, fontWeight: '900', letterSpacing: 0.5 }}>
-                                    {event.time || '--:--'}
-                                </Text>
-                            </View>
+                    {/* Centro: Enfrentamiento Tipográfico Masivo */}
+                    <View style={{ flex: 1, justifyContent: 'center', marginVertical: 8 }}>
+                        <Text numberOfLines={1} adjustsFontSizeToFit style={{
+                            color: focused ? '#fff' : '#f0f0fd',
+                            fontSize: 26, fontWeight: '900', lineHeight: 32, letterSpacing: -0.5,
+                            textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4
+                        }}>
+                            {event.team1?.toUpperCase()}
+                        </Text>
+                        <Text style={{ color: '#464752', fontSize: 16, fontWeight: '900', marginVertical: 2, fontStyle: 'italic' }}>VS</Text>
+                        <Text numberOfLines={1} adjustsFontSizeToFit style={{
+                            color: focused ? '#fff' : '#f0f0fd',
+                            fontSize: 26, fontWeight: '900', lineHeight: 32, letterSpacing: -0.5,
+                            textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4
+                        }}>
+                            {event.team2?.toUpperCase() || '—'}
+                        </Text>
+                    </View>
+
+                    {/* Footer: Servidores / Action */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                        <Text style={{ color: '#737580', fontSize: 10, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' }}>
+                            {hasVideo && focused ? 'PRESIONA PARA VER' : serverCount > 0 ? `${serverCount} SERVIDORES` : 'NO DISPONIBLE'}
+                        </Text>
+                        {focused && hasVideo && (
+                            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#b6a0ff', shadowColor: '#b6a0ff', shadowRadius: 8, shadowOpacity: 1 }} />
                         )}
                     </View>
-
-                    {/* Divisor sutil */}
-                    <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.05)', marginHorizontal: 16 }} />
-
-                    {/* Equipos — "Match Card" layout */}
-                    <View style={{ padding: 16, paddingTop: 14 }}>
-                        {/* Team 1 */}
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-                            {event.logo1 ? (
-                                <Image source={{ uri: event.logo1 }} style={{ width: 38, height: 38, marginRight: 12 }} resizeMode="contain" />
-                            ) : (
-                                <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: ACCENT_DIM, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                                    <Text style={{ color: ACCENT, fontSize: 13, fontWeight: '900' }}>{event.team1?.substring(0,2).toUpperCase()}</Text>
-                                </View>
-                            )}
-                            <Text numberOfLines={1} style={{ color: focused ? TEXT_PRIMARY : '#e2e8f0', fontSize: 13, fontWeight: '800', flex: 1 }}>
-                                {event.team1}
-                            </Text>
-                        </View>
-
-                        {/* VS divider */}
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 10 }}>
-                            <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }} />
-                            <Text style={{ color: TEXT_DIM, fontSize: 10, fontWeight: '900', letterSpacing: 2 }}>VS</Text>
-                            <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }} />
-                        </View>
-
-                        {/* Team 2 */}
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            {event.logo2 ? (
-                                <Image source={{ uri: event.logo2 }} style={{ width: 38, height: 38, marginRight: 12 }} resizeMode="contain" />
-                            ) : (
-                                <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: ACCENT_DIM, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                                    <Text style={{ color: ACCENT, fontSize: 13, fontWeight: '900' }}>{event.team2?.substring(0,2).toUpperCase()}</Text>
-                                </View>
-                            )}
-                            <Text numberOfLines={1} style={{ color: focused ? TEXT_PRIMARY : '#e2e8f0', fontSize: 13, fontWeight: '800', flex: 1 }}>
-                                {event.team2 || '—'}
-                            </Text>
-                        </View>
-                    </View>
-
-                    {/* Footer */}
-                    {focused && hasVideo ? (
-                        <View style={{ backgroundColor: ACCENT, paddingVertical: 11, alignItems: 'center' }}>
-                            <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900', letterSpacing: 2, textTransform: 'uppercase' }}>WATCH NOW</Text>
-                        </View>
-                    ) : focused && !hasVideo ? (
-                        <View style={{ backgroundColor: 'rgba(255,255,255,0.03)', paddingVertical: 10, alignItems: 'center' }}>
-                            <Text style={{ color: TEXT_DIM, fontSize: 9, fontWeight: '700' }}>No disponible</Text>
-                        </View>
-                    ) : serverCount > 0 ? (
-                        <View style={{ flexDirection: 'row', justifyContent: 'center', paddingVertical: 10, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)', gap: 6 }}>
-                            <Text style={{ color: hasVideo ? ACCENT : TEXT_DIM, fontSize: 9, fontWeight: '800', letterSpacing: 1 }}>
-                                {hasVideo ? 'LIVE' : 'OFFLINE'}
-                            </Text>
-                            <Text style={{ color: TEXT_DIM, fontSize: 9 }}>·</Text>
-                            <Text style={{ color: TEXT_DIM, fontSize: 9, fontWeight: '600' }}>
-                                {serverCount} {serverCount === 1 ? 'servidor' : 'servidores'}
-                            </Text>
-                        </View>
-                    ) : null}
                 </View>
             )}
         </TvFocusable>
@@ -193,7 +148,10 @@ export default function TvAgendaSection() {
 
     // Misma lógica de filtro por fecha de hoy que TvSportsScreen
     const todayAgenda = useMemo(() => {
-        const today = new Date().toISOString().split('T')[0];
+        // Usar hora de Argentina (UTC-3) para evitar que después de las 21:00 se pierdan eventos
+        const now = new Date();
+        const arDate = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+        const today = arDate.toISOString().split('T')[0];
         return featuredEvents
             .filter(e => e.date === today)
             .sort((a, b) => a.time.localeCompare(b.time));
@@ -209,27 +167,17 @@ export default function TvAgendaSection() {
 
     return (
         <View style={{ marginBottom: 44 }}>
-            {/* Cabecera sección — igual que TvSportsScreen */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10, paddingLeft: 24, gap: 10 }}>
+            {/* Cabecera sección — Titular Gigante */}
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end', marginBottom: 24, paddingLeft: 24, gap: 16 }}>
+                <Text style={{ color: '#f0f0fd', fontSize: 42, fontWeight: '900', letterSpacing: -1, textShadowColor: 'rgba(0,0,0,0.8)', textShadowOffset: { width: 0, height: 4 }, textShadowRadius: 10 }}>
+                    AGENDA DEL DÍA
+                </Text>
 
-                <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                        <Text style={{ color: TEXT_PRIMARY, fontSize: 20, fontWeight: '900', letterSpacing: 0.2 }}>
-                            Agenda del Día
-                        </Text>
-                        {liveCount > 0 && (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: LIVE_DIM, borderWidth: 1, borderColor: LIVE_RED, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, gap: 4 }}>
-                                <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: LIVE_RED }} />
-                                <Text style={{ color: LIVE_RED, fontSize: 9, fontWeight: '900', letterSpacing: 1 }}>
-                                    {liveCount} EN VIVO
-                                </Text>
-                            </View>
-                        )}
+                {liveCount > 0 && (
+                    <View style={{ marginBottom: 8, paddingHorizontal: 12, paddingVertical: 4, backgroundColor: 'rgba(255,68,68,0.1)', borderRadius: 6, borderWidth: 1, borderColor: '#ff4444' }}>
+                        <Text style={{ color: '#ff4444', fontSize: 13, fontWeight: '900', letterSpacing: 2 }}>{liveCount} EN VIVO</Text>
                     </View>
-                    <Text style={{ color: TEXT_SECONDARY, fontSize: 12, fontWeight: '600', marginTop: 1 }}>
-                        {todayCapitalized} · {filtered.length} {filtered.length === 1 ? 'evento' : 'eventos'}
-                    </Text>
-                </View>
+                )}
             </View>
 
             {/* Filtros de categoría */}
@@ -293,28 +241,28 @@ export default function TvAgendaSection() {
                 </View>
             )}
 
-            {/* Modal de selección de servidor */}
+            {/* Modal de selección de servidor - Modal Cinematic */}
             <Modal visible={!!selectedEventModal} transparent={true} animationType="fade" onRequestClose={() => setSelectedEventModal(null)}>
-                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.88)', alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ flex: 1, backgroundColor: 'rgba(12,14,23,0.95)', alignItems: 'center', justifyContent: 'center' }}>
                     {selectedEventModal && (
-                        <View style={{ width: 620, backgroundColor: BG_CARD_2, borderRadius: 24, borderWidth: 1, borderColor: ACCENT_GLOW, overflow: 'hidden', elevation: 20, shadowColor: ACCENT, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.3, shadowRadius: 30 }}>
-                            <View style={{ padding: 24, backgroundColor: ACCENT_DIM, borderBottomWidth: 1, borderBottomColor: BORDER_CARD }}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 8 }}>
-                                    {selectedEventModal.event.logo1 && <Image source={{ uri: selectedEventModal.event.logo1 }} style={{ width: 56, height: 56 }} resizeMode="contain" />}
-                                    <View style={{ alignItems: 'center' }}>
-                                        <Text style={{ color: TEXT_PRIMARY, fontSize: 22, fontWeight: '900', textAlign: 'center' }}>
-                                            {selectedEventModal.event.team1} vs {selectedEventModal.event.team2}
-                                        </Text>
-                                        <Text style={{ color: ACCENT, fontSize: 13, fontWeight: '700', textAlign: 'center', marginTop: 4 }}>
-                                            {selectedEventModal.event.league} · {selectedEventModal.event.time}
-                                        </Text>
-                                    </View>
-                                    {selectedEventModal.event.logo2 && <Image source={{ uri: selectedEventModal.event.logo2 }} style={{ width: 56, height: 56 }} resizeMode="contain" />}
-                                </View>
+                        <View style={{ width: 680, backgroundColor: '#11131d', borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', overflow: 'hidden', elevation: 20 }}>
+                            {/* Modal Header Puramente Tipográfico */}
+                            <View style={{ padding: 40, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)', alignItems: 'center' }}>
+                                <Text style={{ color: '#aaaab7', fontSize: 12, fontWeight: '800', letterSpacing: 4, textTransform: 'uppercase', marginBottom: 12 }}>
+                                    {selectedEventModal.event.league || 'TRANSMISIÓN'}
+                                </Text>
+                                <Text style={{ color: '#fff', fontSize: 32, fontWeight: '900', textAlign: 'center', letterSpacing: -1 }}>
+                                    {selectedEventModal.event.team1}
+                                </Text>
+                                <Text style={{ color: '#464752', fontSize: 18, fontWeight: '900', marginVertical: 4, fontStyle: 'italic' }}>VS</Text>
+                                <Text style={{ color: '#fff', fontSize: 32, fontWeight: '900', textAlign: 'center', letterSpacing: -1 }}>
+                                    {selectedEventModal.event.team2}
+                                </Text>
                             </View>
-                            <View style={{ padding: 24 }}>
-                                <Text style={{ color: TEXT_SECONDARY, fontSize: 15, fontWeight: '600', marginBottom: 16, textAlign: 'center' }}>
-                                    Seleccioná un servidor de transmisión
+                            
+                            <View style={{ padding: 32 }}>
+                                <Text style={{ color: '#737580', fontSize: 12, fontWeight: '800', letterSpacing: 1, marginBottom: 20, textTransform: 'uppercase', textAlign: 'center' }}>
+                                    SELECCIONAR SERVIDOR
                                 </Text>
                                 <FlatList
                                     data={selectedEventModal.servers}
@@ -332,8 +280,8 @@ export default function TvAgendaSection() {
                                                         type: 'tv',
                                                         videoUrl: item.url,
                                                         servers: selectedEventModal.servers,
-                                                        poster: event.logo1 || '',
-                                                        backdrop: event.logo1 || '',
+                                                        poster: '',
+                                                        backdrop: '',
                                                         description: `${event.league} · ${event.time}`,
                                                         genre: 'Deportes',
                                                         year: 'LIVE',
@@ -341,23 +289,20 @@ export default function TvAgendaSection() {
                                                     },
                                                 });
                                             }}
-                                            borderWidth={0} scaleTo={1.03} style={{ borderRadius: 12, marginBottom: 10 }}
+                                            borderWidth={0} scaleTo={1.03} style={{ borderRadius: 12, marginBottom: 16 }}
                                         >
                                             {(focused: boolean) => (
-                                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderRadius: 12, backgroundColor: focused ? ACCENT : 'rgba(255,255,255,0.05)', borderWidth: 1.5, borderColor: focused ? 'rgba(255,255,255,0.3)' : BORDER_CARD }}>
-                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                                                        <Text style={{ color: focused ? '#fff' : ACCENT, fontSize: 12, fontWeight: '900', letterSpacing: 1 }}>STREAM</Text>
-                                                        <Text style={{ color: focused ? '#fff' : TEXT_PRIMARY, fontSize: 16, fontWeight: '800' }}>{item.name}</Text>
-                                                    </View>
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 20, borderRadius: 12, backgroundColor: focused ? '#b6a0ff' : 'rgba(255,255,255,0.03)', borderWidth: 1.5, borderColor: focused ? 'transparent' : 'rgba(255,255,255,0.05)' }}>
+                                                    <Text style={{ color: focused ? '#000' : '#f0f0fd', fontSize: 16, fontWeight: '800', letterSpacing: 2, textTransform: 'uppercase' }}>{item.name}</Text>
                                                 </View>
                                             )}
                                         </TvFocusable>
                                     )}
                                 />
-                                <TvFocusable onPress={() => setSelectedEventModal(null)} borderWidth={0} scaleTo={1.05} style={{ marginTop: 8, borderRadius: 12 }}>
+                                <TvFocusable onPress={() => setSelectedEventModal(null)} borderWidth={0} scaleTo={1.05} style={{ marginTop: 12, borderRadius: 12 }}>
                                     {(focused: boolean) => (
-                                        <View style={{ padding: 14, alignItems: 'center', borderRadius: 12, backgroundColor: focused ? LIVE_DIM : 'transparent', borderWidth: 1.5, borderColor: focused ? LIVE_RED : BORDER_CARD }}>
-                                            <Text style={{ color: focused ? LIVE_RED : TEXT_DIM, fontSize: 14, fontWeight: '700' }}>Cancelar</Text>
+                                        <View style={{ padding: 18, alignItems: 'center', borderRadius: 12, backgroundColor: focused ? 'rgba(255,255,255,0.1)' : 'transparent' }}>
+                                            <Text style={{ color: focused ? '#fff' : '#aaaab7', fontSize: 13, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' }}>CANCELAR</Text>
                                         </View>
                                     )}
                                 </TvFocusable>

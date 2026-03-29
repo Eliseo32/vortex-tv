@@ -446,7 +446,10 @@ export default function TvSportsScreen() {
 
     // ─── Agenda del día desde Firestore ─────────────────────────────────────
     const todayAgenda = useMemo(() => {
-        const today = new Date().toISOString().split('T')[0];
+        // Usar hora de Argentina (UTC-3) para evitar que después de las 21:00 se pierdan eventos
+        const now = new Date();
+        const arDate = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+        const today = arDate.toISOString().split('T')[0];
         return featuredEvents
             .filter(e => e.date === today)
             .sort((a, b) => a.time.localeCompare(b.time));
@@ -533,7 +536,7 @@ export default function TvSportsScreen() {
                 showsVerticalScrollIndicator={false}
                 onScroll={handleScroll}
                 scrollEventThrottle={100}
-                contentContainerStyle={{ paddingBottom: 200, paddingTop: 120 }}
+                contentContainerStyle={{ paddingBottom: 200, paddingTop: 40 }}
                 initialNumToRender={3}
                 windowSize={5}
                 maxToRenderPerBatch={3}
@@ -541,23 +544,33 @@ export default function TvSportsScreen() {
 
                 ListHeaderComponent={
                     <View>
-                        {/* Título de la sección */}
-                        <View style={{ marginBottom: 24, paddingLeft: 64, marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                            <View style={{
-                                width: 44, height: 44, borderRadius: 12,
-                                backgroundColor: ACCENT_DIM, alignItems: 'center', justifyContent: 'center',
-                                borderWidth: 1, borderColor: ACCENT_GLOW
-                            }}>
-                                <Trophy color={ACCENT} size={22} strokeWidth={2} />
-                            </View>
-                            <View>
-                                <Text style={{ color: TEXT_PRIMARY, fontSize: 30, fontWeight: '900', letterSpacing: -0.5 }}>
-                                    Deportes
-                                </Text>
-                                <Text style={{ color: TEXT_SECONDARY, fontSize: 12, fontWeight: '600', marginTop: 1 }}>
-                                    Agenda en vivo y canales deportivos
-                                </Text>
-                            </View>
+                        {/* ── HEADER COMPACTO CON BOTÓN ATRÁS ── */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 56, marginBottom: 24 }}>
+                            <TvFocusable
+                                onPress={() => navigation.goBack()}
+                                borderWidth={0}
+                                scaleTo={1.1}
+                                style={{ borderRadius: 24, marginRight: 20 }}
+                            >
+                                {(focused: boolean) => (
+                                    <View style={{
+                                        width: 48, height: 48, borderRadius: 24,
+                                        alignItems: 'center', justifyContent: 'center',
+                                        backgroundColor: focused ? ACCENT : 'rgba(255,255,255,0.05)',
+                                        borderWidth: 1, borderColor: focused ? ACCENT_GLOW : BORDER_CARD,
+                                        shadowColor: focused ? ACCENT : 'transparent',
+                                        shadowOpacity: focused ? 0.5 : 0, shadowRadius: 10, elevation: focused ? 10 : 0
+                                    }}>
+                                        <Text style={{ color: focused ? '#fff' : TEXT_SECONDARY, fontSize: 18, fontWeight: '900' }}>
+                                            ←
+                                        </Text>
+                                    </View>
+                                )}
+                            </TvFocusable>
+                            <Trophy color={ACCENT} size={22} strokeWidth={2.5} />
+                            <Text style={{ color: TEXT_PRIMARY, fontSize: 24, fontWeight: '900', letterSpacing: 0.5, marginLeft: 10 }}>
+                                Deportes
+                            </Text>
                         </View>
 
                         {/* ── BANNER F1 TELEMETRÍA ──────────────────────────── */}

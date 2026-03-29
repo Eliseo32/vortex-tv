@@ -1,23 +1,28 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, ScrollView, Image, Dimensions, Modal, FlatList, StyleSheet } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { Play, Plus, Check, ChevronLeft, Users, Server, Tv2, Star, Sparkles } from 'lucide-react-native';
 import { useAppStore } from '../../store/useAppStore';
 import TvFocusable from '../../components/tv/TvFocusable';
-import TvMovieCard from '../../components/tv/TvMovieCard';
+import { LinearGradient } from 'expo-linear-gradient';
 
-const { width: windowWidth, height: windowHeight } = Dimensions.get('window');
+const { height: windowHeight } = Dimensions.get('window');
 
-const CinematicButton = ({ icon: Icon, title, onPress, bg = 'rgba(255,255,255,0.08)', activeBg = '#fff', isPrimary = false }: any) => (
-  <TvFocusable onPress={onPress} borderWidth={0} scaleTo={1.06} style={{ borderRadius: 14, marginRight: 16 }}>
+// ─── Botón "Glassmorphic" sin íconos, pura tipografía moderna ────────────────
+const GlassButton = ({ title, onPress, isPrimary = false }: any) => (
+  <TvFocusable onPress={onPress} borderWidth={0} scaleTo={1.08} style={{ borderRadius: 8, marginRight: 16, marginBottom: 12 }}>
     {(focused: boolean) => (
-      <View style={{
-        flexDirection: 'row', alignItems: 'center', paddingHorizontal: 32, paddingVertical: 18, borderRadius: 14,
-        backgroundColor: isPrimary ? (focused ? '#fff' : '#B026FF') : (focused ? '#fff' : bg),
-        borderWidth: isPrimary ? 0 : 1, borderColor: focused ? 'transparent' : 'rgba(255,255,255,0.1)'
-      }}>
-        <Icon color={isPrimary ? "#000" : (focused ? "#000" : "#fff")} size={22} fill={isPrimary ? "#000" : "none"} />
-        {title && <Text style={{ fontWeight: 'black', fontSize: 17, marginLeft: 14, textTransform: 'uppercase', letterSpacing: 1.5, color: isPrimary ? '#000' : (focused ? '#000' : '#fff') }}>{title}</Text>}
+      <View style={[
+        { paddingHorizontal: 28, paddingVertical: 14, borderRadius: 8, borderWidth: 2 },
+        isPrimary 
+          ? { backgroundColor: focused ? '#fff' : 'rgba(176,38,255,0.2)', borderColor: focused ? '#fff' : '#B026FF' }
+          : { backgroundColor: focused ? '#fff' : 'rgba(255,255,255,0.05)', borderColor: focused ? '#fff' : 'rgba(255,255,255,0.1)' }
+      ]}>
+        <Text style={{ 
+          fontWeight: '900', fontSize: 13, textTransform: 'uppercase', letterSpacing: 1.5, 
+          color: isPrimary ? (focused ? '#000' : '#B026FF') : (focused ? '#000' : '#fff') 
+        }}>
+          {title}
+        </Text>
       </View>
     )}
   </TvFocusable>
@@ -27,19 +32,17 @@ export default function TvDetailScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const item = route.params?.item;
-  const { toggleMyList, isInMyList, markAsWatched, isWatched, addToHistory, cloudContent } = useAppStore();
+  const { toggleMyList, isInMyList, markAsWatched, isWatched, addToHistory } = useAppStore();
 
   const [showServerModal, setShowServerModal] = useState(false);
-  const [actionType, setActionType] = useState<'play' | 'party' | null>(null);
-
+  const [actionType, setActionType] = useState<'play' | 'party' | null>('play');
+  
   const isSeries = item?.type === 'series' || item?.type === 'anime';
   const isLiveTV = item?.type === 'tv';
   const hasSeasons = isSeries && item?.seasonsData && item.seasonsData.length > 0;
 
   const [selectedSeason, setSelectedSeason] = useState(1);
   const [selectedEpisode, setSelectedEpisode] = useState(1);
-
-  const similarItems = useMemo(() => cloudContent.filter(c => c.type === item?.type && c.id !== item?.id).slice(0, 10), [cloudContent, item]);
 
   useEffect(() => {
     if (route.params?.season && route.params?.episode) {
@@ -50,200 +53,299 @@ export default function TvDetailScreen() {
     }
   }, [item, route.params]);
 
-  if (!item) return <View className="flex-1 bg-[#050505]" />;
+  if (!item) return <View style={{ flex: 1, backgroundColor: '#050505' }} />;
   const isSaved = isInMyList(item.id);
+  
   const currentSeasonData = item.seasonsData?.find((s: any) => s.season === selectedSeason);
   const episodesArray = Array.from({ length: currentSeasonData?.episodes || 0 }, (_, i) => i + 1);
 
-  const getDynamicServers = () => {
+  // ─── Funciones de Lógica de Reproducción ──────────────────────────────────
+  const getServersForEpisode = (season: number, ep: number) => {
     if (isSeries && item.tmdb_id) {
-      const linksData = item.episodeLinks && item.episodeLinks[`${selectedSeason}-${selectedEpisode}`];
-      if (linksData) return Array.isArray(linksData) ? linksData.map((l, i) => typeof l === 'string' ? { name: `Servidor ${i + 1}`, url: l } : l) : [{ name: '🌟 Servidor Premium', url: linksData }];
+      const linksData = item.episodeLinks && item.episodeLinks[`${season}-${ep}`];
+      if (linksData) {
+        return Array.isArray(linksData) 
+          ? linksData.map((l, i) => typeof l === 'string' ? { name: `SERVIDOR ${i + 1}`, url: l } : l) 
+          : [{ name: 'SERVIDOR PREMIUM', url: linksData }];
+      }
       return [];
     }
-    const movieServers = item.servers && item.servers.length > 0 ? item.servers : (item.videoUrl ? [{ name: 'Servidor Principal', url: item.videoUrl }] : []);
-    return movieServers.map((srv: any, i: number) => typeof srv === 'string' ? { name: `Servidor ${i + 1}`, url: srv } : srv);
+    const movieServers = item.servers && item.servers.length > 0 ? item.servers : (item.videoUrl ? [{ name: 'SERVIDOR PRINCIPAL', url: item.videoUrl }] : []);
+    return movieServers.map((srv: any, i: number) => typeof srv === 'string' ? { name: `SERVIDOR ${i + 1}`, url: srv } : srv);
   };
 
-  const handlePlayDirect = () => {
-    const servers = getDynamicServers();
+  const directPlayEpisode = (season: number, ep: number) => {
+    setSelectedEpisode(ep);
+    const servers = getServersForEpisode(season, ep);
     if (servers.length === 0) return;
-    if (isSeries) { markAsWatched(`${item.id}-s${selectedSeason}-e${selectedEpisode}`); addToHistory(item, selectedSeason, selectedEpisode); }
-    else { addToHistory(item); }
+    
+    // Marcar como visto ANTES de navegar inmediatamente
+    markAsWatched(`${item.id}-s${season}-e${ep}`);
+    addToHistory(item, season, ep);
 
-    if (item.genre === 'Deportes') {
-      navigation.navigate('SportsPlayerTV', { item });
+    navigation.navigate('PlayerTV', {
+      videoUrl: servers[0].url,
+      title: `${item.title} - T${season} E${ep}`,
+      seriesItem: item,
+      season,
+      episode: ep,
+    });
+  };
+
+  const handleMainPlay = () => {
+    if (isSeries) {
+      directPlayEpisode(selectedSeason, selectedEpisode);
     } else {
-      navigation.navigate('PlayerTV', {
-        videoUrl: servers[0].url,
-        title: isSeries ? `${item.title} - T${selectedSeason} E${selectedEpisode}` : item.title,
-        // Series context for "Next Episode" button
-        seriesItem: isSeries ? item : undefined,
-        season: isSeries ? selectedSeason : undefined,
-        episode: isSeries ? selectedEpisode : undefined,
-      });
+      const servers = getServersForEpisode(1, 1);
+      if (servers.length === 0) return;
+      addToHistory(item);
+      if (item.genre === 'Deportes') {
+        navigation.navigate('SportsPlayerTV', { item });
+      } else {
+        navigation.navigate('PlayerTV', { videoUrl: servers[0].url, title: item.title });
+      }
     }
   };
 
   return (
-    <View className="flex-1 bg-[#050505]">
-
-      {/* 🌌 FONDO MÁGICO (Ambilight Cinematic Aura) */}
-      <View style={StyleSheet.absoluteFillObject} className="bg-[#050505]">
-
-        {/* Capa 1: Aura desenfocada (Extrae el color dominante de la película) */}
-        <Image
-          source={{ uri: item.backdrop || item.poster }}
-          style={[StyleSheet.absoluteFillObject, { opacity: 0.45 }]}
-          blurRadius={90} // Desenfoque extremo para crear iluminación ambiental
+    <View style={{ flex: 1, backgroundColor: '#050505' }}>
+      
+      {/* 🌌 FONDO RADICAL MINIMALISTA (Ambilight Neon) */}
+      <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+        {/* Imagen desenfocada para crear textura cinemática de fondo */}
+        <Image 
+          source={{ uri: item.backdrop || item.poster }} 
+          style={{ width: '100%', height: '100%', position: 'absolute' }} 
+          resizeMode="cover" 
+          blurRadius={60}
         />
+        
+        {/* Capa de luz neón base sutil */}
+        <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(176,38,255,0.06)' }} />
+        
+        {/* Oscurecimiento profundo (Background sólido oscuro en vez de fotográfico) */}
+        <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(5,5,5,0.75)' }} />
 
-        {/* Capa 2: Imagen Nítida empujada hacia la DERECHA */}
-        <View style={{ position: 'absolute', top: 0, right: 0, width: '70%', height: windowHeight * 0.9 }}>
-          {/* Unimos la imagen con un gradiente para que no se vea el corte */}
-          <Image source={{ uri: item.backdrop || item.poster }} style={{ width: '100%', height: '100%', opacity: 0.85 }} resizeMode="cover" />
-          <View className="absolute inset-0 bg-gradient-to-l from-transparent via-[#050505]/40 to-[#050505]" />
-        </View>
-
-        {/* Capa 3: Gradiente de Legibilidad Estricto (Protege el texto a la IZQUIERDA) */}
-        <View className="absolute inset-0 bg-gradient-to-r from-[#050505] via-[#050505]/95 to-transparent w-[65%]" />
-        <View className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/30 to-transparent" />
+        {/* Gradiente inferior suave para fundido con el resto de la pantalla */}
+        <LinearGradient
+            colors={['transparent', '#050505']}
+            start={{ x: 0, y: 0.5 }} end={{ x: 0, y: 1 }}
+            style={StyleSheet.absoluteFillObject}
+        />
       </View>
 
-      <ScrollView className="flex-1 z-10" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+      {/* Botón Flotante para VOLVER, minimalista y transparente */}
+      <View style={{ position: 'absolute', top: 40, left: 60, zIndex: 50 }}>
+        <TvFocusable onPress={() => navigation.goBack()} borderWidth={0} scaleTo={1.1} style={{ borderRadius: 999 }}>
+          {(focused: boolean) => (
+            <View style={{
+              width: 50, height: 50, borderRadius: 25,
+              backgroundColor: focused ? '#fff' : 'rgba(255,255,255,0.1)',
+              borderColor: focused ? '#fff' : 'rgba(255,255,255,0.3)', borderWidth: 1,
+              alignItems: 'center', justifyContent: 'center'
+            }}>
+              <Text style={{ 
+                color: focused ? '#000' : '#fff', fontWeight: '900', fontSize: 24,
+                transform: [{ translateY: -2 }]
+              }}>
+                ‹
+              </Text>
+            </View>
+          )}
+        </TvFocusable>
+      </View>
 
-        {/* BOTÓN VOLVER FLOTANTE */}
-        <View className="px-16 pt-12 pb-2">
-          <TvFocusable onPress={() => navigation.goBack()} borderWidth={0} style={{ borderRadius: 999, alignSelf: 'flex-start' }} focusedStyle={{ backgroundColor: '#fff' }}>
-            {(focused: boolean) => (
-              <View className={`w-14 h-14 rounded-full items-center justify-center border border-white/10 shadow-lg shadow-black ${focused ? 'bg-white' : 'bg-[#050505]/40'}`}>
-                <ChevronLeft color={focused ? "#000" : "#fff"} size={32} />
+      <ScrollView 
+        style={{ flex: 1, zIndex: 10 }} 
+        showsVerticalScrollIndicator={false} 
+        contentContainerStyle={{ paddingBottom: 150 }}
+      >
+        
+        {/* 📋 SECCIÓN HERO (Split Layout Clásico) */}
+        <View style={{ flexDirection: 'row', paddingTop: windowHeight * 0.12, paddingHorizontal: 70, minHeight: windowHeight * 0.65 }}>
+          
+          {/* PANEL IZQUIERDO: Textos e info */}
+          <View style={{ flex: 1, paddingRight: 40, justifyContent: 'center' }}>
+            
+            {/* TÍTULO GIGANTE ESCALADO A TV (Max 54dp) */}
+            <Text numberOfLines={2} style={{ 
+              color: '#fff', fontSize: 54, fontWeight: '900', letterSpacing: -1, 
+              lineHeight: 58, marginBottom: 12, textShadowColor: 'rgba(0,0,0,0.9)', 
+              textShadowOffset: { width: 0, height: 6 }, textShadowRadius: 20,
+            }}>
+              {(item.title || item.name || '').toUpperCase()}
+            </Text>
+
+            {/* METADATA ESENCIAL */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 12 }}>
+              <Text style={{ color: '#fff', fontSize: 16, fontWeight: '800', letterSpacing: 2 }}>
+                {item.year || '2024'}
+              </Text>
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#B026FF' }}/>
+              <Text style={{ color: '#9CA3AF', fontSize: 16, fontWeight: '800', letterSpacing: 2 }}>
+                IMDb {item.rating || '9.4'}
+              </Text>
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#B026FF' }}/>
+              <View style={{ borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.3)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>4K HDR</Text>
               </View>
-            )}
-          </TvFocusable>
-        </View>
+            </View>
 
-        {/* 📋 SECCIÓN HERO: METADATA Y BOTONES */}
-        <View className="px-16 pt-2 min-h-[50vh] justify-center">
-          <View className="flex-row items-center mb-5 space-x-3">
-            <View className="bg-white/10 px-3 py-1.5 rounded-md border border-white/20">
-              <Text className="text-white text-[11px] font-black tracking-widest uppercase">{isLiveTV ? 'TV en Vivo' : isSeries ? 'Serie Original' : 'Película Destacada'}</Text>
+            {/* SINOPSIS CORTA (3 líneas) */}
+            <Text numberOfLines={3} style={{ 
+              color: '#D1D5DB', fontSize: 16, fontWeight: '500', lineHeight: 28, 
+              marginBottom: 32, letterSpacing: 0.5,
+              textShadowColor: 'rgba(0,0,0,0.8)', textShadowRadius: 10
+            }}>
+              {item.description}
+            </Text>
+
+            {/* BOTONES */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+              <GlassButton title={isSeries ? "REPRODUCIR EP" : "REPRODUCIR"} isPrimary={true} onPress={handleMainPlay} />
+              <GlassButton title={isSaved ? "EN LISTA" : "MI LISTA"} onPress={() => toggleMyList(item.id)} />
+              {!isLiveTV && <GlassButton title="PARTY" onPress={() => { setActionType('party'); setShowServerModal(true); }} />}
+              {!isLiveTV && <GlassButton title="SERVIDORES" onPress={() => { setActionType('play'); setShowServerModal(true); }} />}
             </View>
           </View>
 
-          <Text numberOfLines={2} className="text-white text-7xl font-black leading-tight mb-8 shadow-black drop-shadow-2xl tracking-tighter max-w-[65%]">
-            {item.title}
-          </Text>
-
-          <View className="flex-row items-center mb-8 space-x-4">
-            <View className="flex-row items-center bg-green-500/20 px-3 py-1.5 rounded border border-green-500/50">
-              <Star color="#4ade80" size={16} fill="#4ade80" />
-              <Text className="text-green-400 font-black text-base ml-2">{item.rating || '9.8'}</Text>
-            </View>
-            <Text className="text-gray-200 font-bold text-xl">{item.year}</Text>
-            <View className="border border-white/20 px-2 py-1 rounded bg-black/40"><Text className="text-white text-xs font-bold tracking-widest">4K HDR</Text></View>
-            <Text className="text-gray-200 font-bold text-xl">{item.genre}</Text>
+          {/* PANEL DERECHO: El Póster Físico Premium */}
+          <View style={{ justifyContent: 'center', alignItems: 'flex-end', width: 280 }}>
+             <View style={{
+                width: 240, height: 360, borderRadius: 14, overflow: 'hidden',
+                borderWidth: 2, borderColor: 'rgba(255,255,255,0.15)',
+                shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.8, shadowRadius: 30, elevation: 15
+             }}>
+               <Image source={{ uri: item.poster }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+             </View>
           </View>
 
-          <Text numberOfLines={3} className="text-gray-300 text-xl leading-9 font-medium mb-12 max-w-[60%] drop-shadow-xl shadow-black">
-            {item.description}
-          </Text>
-
-          {/* BOTONES DE ACCIÓN */}
-          <View className="flex-row items-center">
-            <CinematicButton icon={Play} title={isSeries ? `Reproducir T${selectedSeason} E${selectedEpisode}` : isLiveTV ? 'Sintonizar' : 'Reproducir Ahora'} isPrimary={true} onPress={handlePlayDirect} />
-            <CinematicButton icon={isSaved ? Check : Plus} title="Mi Lista" onPress={() => toggleMyList(item.id)} />
-            <CinematicButton icon={Server} onPress={() => { setActionType('play'); setShowServerModal(true); }} />
-            {!isLiveTV && <CinematicButton icon={Users} bg="rgba(147,51,234,0.2)" onPress={() => { setActionType('party'); setShowServerModal(true); }} />}
-          </View>
         </View>
 
-        {/* 🎬 CONTENIDO ENRQUECIDO */}
-        <View className="px-16 mt-12 pt-12 border-t border-white/10">
+        {/* 🎬 EPISODIOS (Ultra-Wide Edge-to-Edge Cards) */}
+        {hasSeasons && (
+          <View style={{ marginTop: 20 }}>
+            {/* Títulos de Temporadas estilo Tags minimalistas */}
+            <FlatList
+              horizontal showsHorizontalScrollIndicator={false} data={item.seasonsData} keyExtractor={(s: any) => s.season.toString()} 
+              contentContainerStyle={{ paddingLeft: 70, marginBottom: 32 }}
+              renderItem={({ item: s }: any) => (
+                <TvFocusable onPress={() => setSelectedSeason(s.season)} borderWidth={0} style={{ borderRadius: 6, marginRight: 32 }}>
+                  {(focused: boolean) => (
+                    <View style={{ paddingBottom: 8, borderBottomWidth: 4, borderBottomColor: focused ? '#B026FF' : (selectedSeason === s.season ? '#fff' : 'transparent') }}>
+                      <Text style={{ 
+                        fontWeight: '900', fontSize: 20, textTransform: 'uppercase', letterSpacing: 4,
+                        color: focused ? '#B026FF' : (selectedSeason === s.season ? '#fff' : '#6B7280') 
+                      }}>
+                        TEMPORADA {s.season}
+                      </Text>
+                    </View>
+                  )}
+                </TvFocusable>
+              )}
+            />
 
-          {hasSeasons && (
-            <View className="mb-16">
-              <Text className="text-white font-black text-3xl mb-8 tracking-wide drop-shadow-md">Temporadas</Text>
-              <FlatList
-                horizontal showsHorizontalScrollIndicator={false} data={item.seasonsData} keyExtractor={(s: any) => s.season.toString()} className="mb-10"
-                renderItem={({ item: s }: any) => (
-                  <TvFocusable onPress={() => { setSelectedSeason(s.season); setSelectedEpisode(1); }} borderWidth={0} style={{ borderRadius: 12, marginRight: 16 }}>
+            {/* Fila Horizontal de Episodios Extra Anchos */}
+            <FlatList
+              horizontal showsHorizontalScrollIndicator={false} data={episodesArray} keyExtractor={(ep) => ep.toString()}
+              contentContainerStyle={{ paddingLeft: 70, paddingRight: 70, paddingBottom: 40 }}
+              renderItem={({ item: epNum }) => {
+                const isEpWatched = isWatched(`${item.id}-s${selectedSeason}-e${epNum}`);
+                return (
+                  <TvFocusable onPress={() => directPlayEpisode(selectedSeason, epNum)} borderWidth={0} scaleTo={1.04} style={{ borderRadius: 14, marginRight: 40 }}>
                     {(focused: boolean) => (
-                      <View className={`px-8 py-4 rounded-xl border ${selectedSeason === s.season && !focused ? 'bg-white/10 border-white/30' : focused ? 'bg-white border-white' : 'bg-[#111] border-white/10'}`}>
-                        <Text style={{ fontWeight: 'black', fontSize: 16, textTransform: 'uppercase', color: focused ? '#000' : (selectedSeason === s.season ? '#fff' : '#9CA3AF') }}>
-                          Temporada {s.season}
-                        </Text>
+                      <View style={{
+                        width: 280, height: 157, borderRadius: 12, overflow: 'hidden', backgroundColor: '#0a0a0a',
+                        borderWidth: 2, borderColor: focused ? '#B026FF' : 'rgba(255,255,255,0.05)',
+                        elevation: focused ? 15 : 0, shadowColor: '#B026FF', shadowOpacity: focused ? 0.3 : 0, shadowRadius: 15
+                      }}>
+                        {/* Imágen estirada: opaca sin blur si está en foco */}
+                        <Image 
+                          source={{ uri: item.backdrop || item.poster }} 
+                          style={{ ...StyleSheet.absoluteFillObject, opacity: focused ? 0.8 : 0.3 }} 
+                          blurRadius={focused ? 0 : 5} 
+                        />
+                        
+                        {/* Overlay Neon Fuchsia al Enfocar */}
+                        {focused && <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(176,38,255,0.15)' }} />}
+                        
+                        <LinearGradient 
+                          colors={['transparent', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.95)']} 
+                          start={{ x: 0, y: 0.3 }} end={{ x: 0, y: 1 }} 
+                          style={StyleSheet.absoluteFillObject} 
+                        />
+                        
+                        <View style={{ position: 'absolute', bottom: 16, left: 20, right: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                          <Text style={{ fontWeight: '900', fontSize: 26, color: focused ? '#fff' : '#e5e7eb', letterSpacing: 2 }}>
+                            EP {epNum.toString().padStart(2, '0')}
+                          </Text>
+                          {isEpWatched && (
+                            <Text style={{ fontWeight: '900', fontSize: 11, color: '#4ade80', letterSpacing: 2 }}>
+                              VISTO
+                            </Text>
+                          )}
+                        </View>
                       </View>
                     )}
                   </TvFocusable>
-                )}
-              />
-
-              <Text className="text-white font-black text-3xl mb-8 tracking-wide drop-shadow-md">Episodios</Text>
-              <FlatList
-                horizontal showsHorizontalScrollIndicator={false} data={episodesArray} keyExtractor={(ep) => ep.toString()}
-                renderItem={({ item: epNum }) => {
-                  const isEpWatched = isWatched(`${item.id}-s${selectedSeason}-e${epNum}`);
-                  return (
-                    <TvFocusable onPress={() => setSelectedEpisode(epNum)} borderWidth={4} style={{ borderRadius: 16, marginRight: 24 }}>
-                      {(focused: boolean) => (
-                        <View className={`w-64 h-36 rounded-xl overflow-hidden justify-end p-5 bg-[#111] ${selectedEpisode === epNum && !focused ? 'border-2 border-white/50' : 'border border-transparent'}`}>
-                          <Image source={{ uri: item.backdrop }} className="absolute inset-0 w-full h-full opacity-30" blurRadius={10} />
-                          <View className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent" />
-                          <View className="absolute top-1/2 left-1/2 -mt-5 -ml-5"><Play color={focused ? "#B026FF" : "#fff"} size={40} fill={focused ? "#B026FF" : "none"} opacity={focused ? 1 : 0.7} /></View>
-                          <Text style={{ fontWeight: '900', fontSize: 22, color: focused ? '#B026FF' : '#fff', zIndex: 10 }}>Episodio {epNum}</Text>
-                          {isEpWatched && <View className="absolute top-3 right-3 bg-green-500 rounded-full p-1.5"><Check color="#fff" size={16} strokeWidth={4} /></View>}
-                        </View>
-                      )}
-                    </TvFocusable>
-                  );
-                }}
-              />
-            </View>
-          )}
-
-          {!isLiveTV && similarItems.length > 0 && (
-            <View className="mb-8">
-              <Text className="text-white text-3xl font-black mb-8 tracking-wide">Más como esto</Text>
-              <FlatList
-                horizontal showsHorizontalScrollIndicator={false} data={similarItems} keyExtractor={(item) => item.id} contentContainerStyle={{ paddingBottom: 20 }}
-                renderItem={({ item }) => <TvMovieCard item={item} onPress={() => navigation.replace('DetailTV', { item })} />}
-              />
-            </View>
-          )}
-        </View>
+                );
+              }}
+            />
+          </View>
+        )}
       </ScrollView>
 
-      {/* MODAL DE SERVIDORES */}
+      {/* MODAL SERVIDORES MINIMALISTA */}
       <Modal visible={showServerModal} transparent animationType="fade">
-        <View className="flex-1 bg-black/90 justify-center items-center">
-          <View className="w-[600px] bg-[#0a0a0a] rounded-3xl p-10 border border-white/10 shadow-2xl shadow-black">
-            <Text className="text-white text-3xl font-black text-center mb-8">Seleccionar Servidor</Text>
-            {getDynamicServers().map((srv: any, idx: number) => (
-              <TvFocusable key={idx} onPress={() => {
-                setShowServerModal(false);
-                if (actionType === 'play') {
-                  if (item.genre === 'Deportes') navigation.navigate('SportsPlayerTV', { item: { ...item, videoUrl: srv.url } });
-                  else navigation.navigate('PlayerTV', { videoUrl: srv.url, title: item.title });
-                } else {
-                  navigation.navigate('PartySetup', { item, title: item.title, backdrop: item.backdrop, selectedVideoUrl: srv.url });
-                }
-              }} borderWidth={3} style={{ borderRadius: 16, marginBottom: 16 }}>
-                {(focused: boolean) => (
-                  <View className="px-8 py-5 rounded-xl bg-white/5 flex-row justify-between items-center border border-white/5">
-                    <Text className="text-white font-bold text-xl">{srv.name}</Text>
-                    <Play color={focused ? "#000" : "#6B7280"} size={24} fill={focused ? "#000" : "none"} />
-                  </View>
-                )}
-              </TvFocusable>
-            ))}
-            <TvFocusable onPress={() => setShowServerModal(false)} borderWidth={3} style={{ borderRadius: 16, marginTop: 16 }}>
-              {(focused: boolean) => (
-                <View className="px-8 py-5 rounded-xl bg-red-600/20 items-center border border-red-500/20">
-                  <Text style={{ fontWeight: 'black', fontSize: 18, color: focused ? '#000' : '#ef4444', textTransform: 'uppercase' }}>Cancelar</Text>
-                </View>
-              )}
-            </TvFocusable>
+        <View style={{ flex: 1, backgroundColor: 'rgba(5,5,5,0.98)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ width: 600, maxHeight: windowHeight * 0.8, backgroundColor: '#0a0a0a', borderRadius: 24, padding: 40, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
+            <Text style={{ color: '#fff', fontSize: 32, fontWeight: '900', textAlign: 'center', marginBottom: 30, letterSpacing: 3 }}>
+              {actionType === 'party' ? 'VORTEX PARTY' : 'ELEGIR SERVIDOR'}
+            </Text>
+            
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+              {getServersForEpisode(selectedSeason, selectedEpisode).map((srv: any, idx: number) => (
+                <TvFocusable key={idx} onPress={() => {
+                  setShowServerModal(false);
+                  if (actionType === 'play') {
+                    if (item.genre === 'Deportes') navigation.navigate('SportsPlayerTV', { item: { ...item, videoUrl: srv.url } });
+                    else navigation.navigate('PlayerTV', { videoUrl: srv.url, title: item.title });
+                  } else {
+                    navigation.navigate('PartySetup', { item, title: item.title, backdrop: item.backdrop, selectedVideoUrl: srv.url });
+                  }
+                }} borderWidth={0} style={{ borderRadius: 8, marginBottom: 16 }}>
+                  {(focused: boolean) => (
+                    <View style={{
+                      padding: 24, borderRadius: 8, borderWidth: 2,
+                      borderColor: focused ? '#B026FF' : 'rgba(255,255,255,0.08)',
+                      backgroundColor: focused ? 'rgba(176,38,255,0.1)' : 'transparent',
+                      alignItems: 'center'
+                    }}>
+                      <Text style={{ fontWeight: '900', fontSize: 18, color: focused ? '#fff' : '#9CA3AF', letterSpacing: 3, textTransform: 'uppercase' }}>
+                        {srv.name}
+                      </Text>
+                    </View>
+                  )}
+                </TvFocusable>
+              ))}
+
+              <View style={{ marginTop: 20 }}>
+                <TvFocusable onPress={() => setShowServerModal(false)} borderWidth={0} style={{ borderRadius: 8 }}>
+                  {(focused: boolean) => (
+                    <View style={{
+                      padding: 24, borderRadius: 8, borderWidth: 2,
+                      borderColor: focused ? '#ef4444' : 'rgba(255,255,255,0.1)',
+                      backgroundColor: focused ? 'rgba(239,68,68,0.1)' : 'transparent',
+                      alignItems: 'center'
+                    }}>
+                      <Text style={{ fontWeight: '900', fontSize: 18, color: focused ? '#ef4444' : '#fff', letterSpacing: 3 }}>
+                        CERRAR
+                      </Text>
+                    </View>
+                  )}
+                </TvFocusable>
+              </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { View, Text, FlatList, Image, Dimensions, Animated, StyleSheet, BackHandler, Modal } from 'react-native';
+import { View, Text, FlatList, Image, Dimensions, Animated, StyleSheet, BackHandler, Modal, useWindowDimensions } from 'react-native';
 import { Play, Tv } from 'lucide-react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useAppStore } from '../../store/useAppStore';
@@ -72,10 +72,32 @@ function TvChannelsVerticalGrid({ channels }: { channels: any[] }) {
   }
 
   return (
-    <View style={{ flex: 1, paddingTop: 100 }}>
+    <View style={{ flex: 1, paddingTop: 40 }}>
       {/* Header y Filtros (Tabs) */}
       <View style={{ marginBottom: 16, paddingHorizontal: 64 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
+          {/* Botón Atrás */}
+          <TvFocusable
+            onPress={() => navigation.goBack()}
+            borderWidth={0}
+            scaleTo={1.1}
+            style={{ borderRadius: 30, marginRight: 24 }}
+            focusedStyle={{ backgroundColor: 'transparent' }}
+          >
+            {(f) => (
+              <View style={{
+                width: 50, height: 50, borderRadius: 25,
+                backgroundColor: f ? 'rgba(0, 229, 255, 0.1)' : '#111',
+                borderWidth: 2, borderColor: f ? '#00E5FF' : 'rgba(255,255,255,0.1)',
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Text style={{ color: f ? '#00E5FF' : '#fff', fontSize: 24, fontWeight: '900', lineHeight: 28, marginLeft: -2 }}>
+                  ←
+                </Text>
+              </View>
+            )}
+          </TvFocusable>
+
           <Tv color="#B026FF" size={26} strokeWidth={2} />
           <Text style={{ color: '#fff', fontSize: 30, fontWeight: '900', letterSpacing: -0.5, marginLeft: 12 }}>
             TV en Vivo
@@ -295,6 +317,14 @@ function TvChannelsVerticalGrid({ channels }: { channels: any[] }) {
 
 // ─── Pantalla principal ──────────────────────────────────────────────────────
 export default function TvLiveScreen({ category: propCategory, route }: any) {
+  const { width: screenWidth } = useWindowDimensions();
+  // Safe calculation to prevent negative or 0-width bugs on TVs
+  const safeWidth = Math.max(screenWidth, 1000);
+  const numColumns = 5;
+  // TvMovieCard tiene marginHorizontal: 8 (16px total por card) -> 80px
+  // FlatList tiene paddingHorizontal: 52 (104px total)
+  const CARD_WIDTH = (safeWidth - 104 - (16 * numColumns)) / numColumns;
+  
   const activeCategory = propCategory || route?.params?.category || 'movie';
   const navigation = useNavigation<any>();
   const { cloudContent, channelFolders } = useAppStore();
@@ -423,20 +453,43 @@ export default function TvLiveScreen({ category: propCategory, route }: any) {
       <View style={{ flex: 1 }}>
         <FlatList
           ref={flatListRef}
-          key={activeCategory}
+          key={`${activeCategory}-5cols`}
           data={filteredContent}
           keyExtractor={(item) => item.id}
-          numColumns={6}
+          numColumns={5}
           showsVerticalScrollIndicator={false}
           onScroll={handleScroll}
           scrollEventThrottle={100}
-          contentContainerStyle={{ paddingHorizontal: 52, paddingBottom: 200, paddingTop: 120 }}
+          contentContainerStyle={{ paddingHorizontal: 52, paddingBottom: 200, paddingTop: 40 }}
+          columnWrapperStyle={{ marginBottom: 32 }}
 
           ListHeaderComponent={
             <View>
-              {/* Título */}
-              <View style={{ marginBottom: 16, paddingLeft: 4, marginTop: 4 }}>
-                <Text style={{ color: '#fff', fontSize: 30, fontWeight: '900', letterSpacing: -0.5 }}>
+              {/* Navegación y Título */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24, paddingLeft: 4, marginTop: 4 }}>
+                {/* Botón Atrás */}
+                <TvFocusable
+                  onPress={() => navigation.goBack()}
+                  borderWidth={0}
+                  scaleTo={1.1}
+                  style={{ borderRadius: 30, marginRight: 24 }}
+                  focusedStyle={{ backgroundColor: 'transparent' }}
+                >
+                  {(f: boolean) => (
+                    <View style={{
+                      width: 50, height: 50, borderRadius: 25,
+                      backgroundColor: f ? 'rgba(0, 229, 255, 0.1)' : '#111',
+                      borderWidth: 2, borderColor: f ? '#00E5FF' : 'rgba(255,255,255,0.1)',
+                      alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <Text style={{ color: f ? '#00E5FF' : '#fff', fontSize: 24, fontWeight: '900', lineHeight: 28, marginLeft: -2 }}>
+                        ←
+                      </Text>
+                    </View>
+                  )}
+                </TvFocusable>
+
+                <Text style={{ color: '#fff', fontSize: 32, fontWeight: '900', letterSpacing: -0.5 }}>
                   {categoryLabel[activeCategory] || 'Explorar'}
                 </Text>
               </View>
@@ -454,11 +507,8 @@ export default function TvLiveScreen({ category: propCategory, route }: any) {
                     style={[{ width: '100%', height: '100%', position: 'absolute' }, { opacity: heroFadeAnim }]}
                     resizeMode="cover"
                   />
-                  <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(5,5,5,0.35)' }} />
-                  <View style={{
-                    position: 'absolute', left: 0, top: 0, bottom: 0, width: '60%',
-                    backgroundColor: 'rgba(5,5,5,0.72)',
-                  }} />
+                  {/* Capa de oscurecimiento cinematográfico uniforme */}
+                  <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(5,5,5,0.45)' }} />
 
                   <Animated.View style={{ position: 'absolute', bottom: 20, left: 30, width: '60%', opacity: heroFadeAnim }}>
                     <View style={{
@@ -516,7 +566,7 @@ export default function TvLiveScreen({ category: propCategory, route }: any) {
             </View>
           }
           renderItem={({ item }) => (
-            <TvMovieCard item={item} onPress={() => navigation.navigate('DetailTV', { item })} />
+            <TvMovieCard item={item} width={Math.floor(CARD_WIDTH)} height={Math.floor(CARD_WIDTH * 1.45)} onPress={() => navigation.navigate('DetailTV', { item })} />
           )}
         />
       </View>

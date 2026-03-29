@@ -86,6 +86,10 @@ interface AppState {
   userId: string | null;
   setUserId: (id: string | null) => void;
 
+  userAvatar: string | null;
+  availableAvatars: string[];
+  setUserAvatar: (url: string) => void;
+
   profiles: UserProfile[];
   currentProfile: UserProfile | null;
   setProfile: (profile: UserProfile | null) => void;
@@ -133,10 +137,24 @@ export const useAppStore = create<AppState>()(
       currentProfile: null,
       setProfile: (profile) => set({ currentProfile: profile }),
 
+      // SISTEMA DE AVATARES
+      userAvatar: null,
+      availableAvatars: [
+        'https://picsum.photos/seed/vortex1/300/300',
+        'https://picsum.photos/seed/vortex2/300/300',
+        'https://picsum.photos/seed/neon3/300/300',
+        'https://picsum.photos/seed/cyber4/300/300',
+        'https://picsum.photos/seed/synth5/300/300',
+        'https://picsum.photos/seed/retro6/300/300',
+        'https://picsum.photos/seed/future7/300/300',
+        'https://picsum.photos/seed/oled8/300/300',
+      ],
+      setUserAvatar: (url) => set({ userAvatar: url }),
+
       logout: async () => {
         try {
           await signOut(auth);
-          set({ userId: null, currentProfile: null, profiles: [], myList: [], watchedEpisodes: [], watchHistory: [] });
+          set({ userId: null, currentProfile: null, profiles: [], myList: [], watchedEpisodes: [], watchHistory: [], userAvatar: null });
         } catch (e) { console.error("Error al cerrar sesión", e); }
       },
 
@@ -168,10 +186,6 @@ export const useAppStore = create<AppState>()(
       channelFolders: [],
       isLoadingContent: false,
       fetchCloudContent: async () => {
-        if (!auth.currentUser) {
-          console.log('[Store] fetchCloudContent: no Firebase user, skipping.');
-          return;
-        }
 
         set({ isLoadingContent: true });
         try {
@@ -205,7 +219,40 @@ export const useAppStore = create<AppState>()(
             console.warn('channelFolders (angulismo) no disponible:', angErr);
           }
 
-          const mergedFolders: ChannelFolder[] = [...nowfutbolFolders, ...uniqueAngulismo];
+          // TV Libre canales
+          let tvlibreChannels: ChannelFolder[] = [];
+          try {
+            const tvlibreQuery = await getDocs(query(collection(db, 'tvlibre_channels'), orderBy('order', 'asc')));
+            const allSeenNames = new Set([
+              ...nowfutbolFolders.map(f => f.name.toLowerCase().trim()),
+              ...uniqueAngulismo.map(f => f.name.toLowerCase().trim()),
+            ]);
+            let tvlibreIdx = 20000;
+            tvlibreQuery.forEach((docSnap) => {
+              const data = docSnap.data();
+              // Cada doc tiene channels: [{ name, logo, options: [{ name, iframe }] }]
+              if (data.channels && Array.isArray(data.channels)) {
+                for (const ch of data.channels) {
+                  if (!allSeenNames.has(ch.name.toLowerCase().trim())) {
+                    tvlibreChannels.push({
+                      id: `tvlibre-${docSnap.id}-${ch.name}`,
+                      name: ch.name,
+                      logo: ch.logo || null,
+                      options: (ch.options || []).map((opt: any) => ({
+                        name: opt.name || ch.name,
+                        iframe: opt.iframe || '',
+                      })),
+                      order: tvlibreIdx++,
+                    });
+                  }
+                }
+              }
+            });
+          } catch (tvlErr) {
+            console.warn('tvlibre_channels no disponible:', tvlErr);
+          }
+
+          const mergedFolders: ChannelFolder[] = [...nowfutbolFolders, ...uniqueAngulismo, ...tvlibreChannels];
 
           set({
             cloudContent: items,
@@ -227,6 +274,7 @@ export const useAppStore = create<AppState>()(
         myList: state.myList,
         watchedEpisodes: state.watchedEpisodes,
         watchHistory: state.watchHistory,
+        userAvatar: state.userAvatar,
       }),
     }
   )

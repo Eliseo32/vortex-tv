@@ -1,82 +1,153 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Image, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, TextInput, Image, StyleSheet, Dimensions, ActivityIndicator } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { Users, Play, Sparkles, LogIn, X } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import TvFocusable from '../../components/tv/TvFocusable';
+import { db } from '../../config/firebase';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { useAppStore } from '../../store/useAppStore';
 
 const { width, height } = Dimensions.get('window');
 
 export default function TvPartySetupScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const { item, title, backdrop, selectedVideoUrl } = route.params;
+  const { currentProfile, userId } = useAppStore();
+  const { item, title, backdrop, selectedVideoUrl } = route.params ?? {};
 
-  const videoUrlToUse = selectedVideoUrl || item?.videoUrl;
+  const videoUrlToUse = selectedVideoUrl || item?.videoUrl || '';
   const [joinCode, setJoinCode] = useState('');
-  const [generatedCode] = useState(() => "VRTX-" + Math.floor(1000 + Math.random() * 9000));
   const [inputFocused, setInputFocused] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [isJoining, setIsJoining] = useState(false);
+  const [generatedCode] = useState(() => 'VRTX-' + Math.floor(1000 + Math.random() * 9000));
 
-  const createParty = () => {
-    if (!videoUrlToUse) return;
-    navigation.navigate('PartyPlayerTV', { videoUrl: videoUrlToUse, title: title || 'Vortex Party', roomCode: generatedCode, isHost: true });
+  // ─── Crear sala en Firestore ─────────────────────────────────────────────────
+  const createParty = async () => {
+    if (!videoUrlToUse || isCreating) return;
+    setIsCreating(true);
+    try {
+      await setDoc(doc(db, 'parties', generatedCode), {
+        hostId: userId || 'anon',
+        hostName: currentProfile?.name || 'Host',
+        videoUrl: videoUrlToUse,
+        title: title || 'Vortex Party',
+        isPlaying: true,
+        currentTime: 0,
+        updatedAt: Date.now(),
+        createdAt: Date.now(),
+      });
+      navigation.navigate('PartyPlayerTV', {
+        videoUrl: videoUrlToUse,
+        title: title || 'Vortex Party',
+        roomCode: generatedCode,
+        isHost: true,
+      });
+    } catch (e) {
+      console.error('Error creando sala Party:', e);
+    } finally {
+      setIsCreating(false);
+    }
   };
 
-  const joinParty = () => {
-    if (!videoUrlToUse || joinCode.length < 4) return;
-    navigation.navigate('PartyPlayerTV', { videoUrl: videoUrlToUse, title: title || 'Vortex Party', roomCode: joinCode.toUpperCase(), isHost: false });
+  // ─── Unirse a una sala existente ─────────────────────────────────────────────
+  const joinParty = async () => {
+    const code = joinCode.trim().toUpperCase();
+    if (code.length < 4 || isJoining) return;
+    setIsJoining(true);
+    try {
+      const partySnap = await getDoc(doc(db, 'parties', code));
+      if (!partySnap.exists()) {
+        // Sala no encontrada - igual intentamos entrar con la URL local
+        navigation.navigate('PartyPlayerTV', {
+          videoUrl: videoUrlToUse,
+          title: title || 'Vortex Party',
+          roomCode: code,
+          isHost: false,
+        });
+        return;
+      }
+      const partyData = partySnap.data();
+      navigation.navigate('PartyPlayerTV', {
+        videoUrl: partyData.videoUrl || videoUrlToUse,
+        title: partyData.title || title || 'Vortex Party',
+        roomCode: code,
+        isHost: false,
+      });
+    } catch (e) {
+      console.error('Error uniéndose a la sala:', e);
+    } finally {
+      setIsJoining(false);
+    }
   };
 
   return (
-    <View className="flex-1 bg-[#050505]">
-      {/* FONDO CINEMÁTICO */}
-      <View style={StyleSheet.absoluteFillObject}>
-        {backdrop && <Image source={{ uri: backdrop }} style={StyleSheet.absoluteFillObject} blurRadius={40} className="opacity-40" />}
-        <View style={StyleSheet.absoluteFillObject} className="bg-black/80" />
-      </View>
+    <View style={s.root}>
+      {/* Fondo cinematográfico desenfocado */}
+      {backdrop && (
+        <Image source={{ uri: backdrop }} style={StyleSheet.absoluteFillObject} blurRadius={40} />
+      )}
+      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(5,5,5,0.88)' }]} />
 
-      <View className="flex-1 items-center justify-center px-24">
+      {/* Contenido centrado */}
+      <View style={s.inner}>
 
-        {/* ENCABEZADO */}
-        <View className="items-center mb-12">
-          <View className="w-24 h-24 bg-purple-600/20 rounded-full items-center justify-center mb-6 border border-purple-500/30 shadow-lg shadow-purple-500/20">
-            <Users color="#A855F7" size={48} />
+        {/* ── HEADER ─────────────────────────────────────────────────────── */}
+        <View style={s.header}>
+          <View style={s.headerIcon}>
+            <Users color="#B026FF" size={32} />
           </View>
-          <Text className="text-white text-6xl font-black mb-4 tracking-tighter">Vortex Party</Text>
-          <Text className="text-gray-300 text-2xl font-medium text-center max-w-3xl">
-            Comparte <Text className="text-white font-bold">"{title}"</Text> con tus amigos sincronizadamente.
+          <Text style={s.headerTitle}>Vortex Party</Text>
+          <Text style={s.headerSub} numberOfLines={1}>
+            {title ? `"${title}"` : 'Seleccioná un contenido para compartir'}
           </Text>
         </View>
 
-        <View className="flex-row w-full max-w-6xl justify-between">
+        {/* ── DOS COLUMNAS ────────────────────────────────────────────────── */}
+        <View style={s.columns}>
 
-          {/* LADO IZQUIERDO: ANFITRIÓN */}
-          <View className="flex-1 bg-white/5 border border-white/10 p-12 rounded-[32px] mr-8 shadow-2xl shadow-black">
-            <View className="flex-row items-center mb-8">
-              <Sparkles color="#A855F7" size={32} />
-              <Text className="text-white font-bold text-3xl ml-4 tracking-wide">Crear Sala</Text>
+          {/* IZQUIERDA: Crear Sala */}
+          <View style={s.card}>
+            <View style={s.cardRow}>
+              <Sparkles color="#B026FF" size={24} />
+              <Text style={s.cardTitle}>Crear Sala</Text>
             </View>
-            <View className="bg-black/50 border border-white/5 rounded-2xl p-8 mb-10 items-center">
-              <Text className="text-gray-500 text-sm font-bold mb-2 uppercase tracking-widest">Tu Código Privado</Text>
-              <Text style={{ letterSpacing: 8 }} className="text-vortex-primary font-mono text-5xl">{generatedCode}</Text>
+
+            {/* Código generado */}
+            <View style={s.codeBox}>
+              <Text style={s.codeLabel}>TU CÓDIGO PRIVADO</Text>
+              <Text style={s.codeText}>{generatedCode}</Text>
             </View>
-            <TvFocusable onPress={createParty} scaleTo={1.05} borderWidth={4} style={{ borderRadius: 16 }}>
-              {(focused) => (
-                <View className={`py-6 rounded-xl flex-row justify-center items-center ${focused ? 'bg-white' : 'bg-purple-600'}`}>
-                  <Play color={focused ? "#000" : "#fff"} size={28} fill={focused ? "#000" : "#fff"} />
-                  <Text className={`font-black text-2xl ml-4 tracking-widest uppercase ${focused ? 'text-black' : 'text-white'}`}>Iniciar Sala</Text>
-                </View>
+
+            <TvFocusable onPress={createParty} borderWidth={0} scaleTo={1.04} style={s.btn}>
+              {(focused: boolean) => (
+                <LinearGradient
+                  colors={focused ? ['#fff', '#e0e0e0'] : ['#B026FF', '#7700cc']}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                  style={s.btnGrad}
+                >
+                  {isCreating
+                    ? <ActivityIndicator color={focused ? '#000' : '#fff'} />
+                    : <>
+                        <Play color={focused ? '#000' : '#fff'} size={20} fill={focused ? '#000' : '#fff'} />
+                        <Text style={[s.btnText, focused && { color: '#000' }]}>Iniciar Sala</Text>
+                      </>
+                  }
+                </LinearGradient>
               )}
             </TvFocusable>
           </View>
 
-          {/* LADO DERECHO: UNIRSE */}
-          <View className="flex-1 bg-white/5 border border-white/10 p-12 rounded-[32px] ml-8 shadow-2xl shadow-black">
-            <View className="flex-row items-center mb-8">
-              <LogIn color="#4ade80" size={32} />
-              <Text className="text-white font-bold text-3xl ml-4 tracking-wide">Unirse a una Sala</Text>
+          {/* DERECHA: Unirse */}
+          <View style={s.card}>
+            <View style={s.cardRow}>
+              <LogIn color="#4ade80" size={24} />
+              <Text style={s.cardTitle}>Unirse a una Sala</Text>
             </View>
+
             <TextInput
-              focusable={true}
+              focusable
               placeholder="VRTX-0000"
               placeholderTextColor="#4B5563"
               value={joinCode}
@@ -84,22 +155,24 @@ export default function TvPartySetupScreen() {
               onFocus={() => setInputFocused(true)}
               onBlur={() => setInputFocused(false)}
               autoCapitalize="characters"
-              style={{ letterSpacing: 8 }}
-              className={`bg-black/50 text-white text-center font-mono text-4xl py-8 rounded-2xl border-4 mb-10 transition-colors
-                ${inputFocused ? 'border-vortex-primary bg-white/10' : 'border-white/5'}
-              `}
+              style={[s.input, inputFocused && s.inputFocused]}
             />
-            <TvFocusable onPress={joinParty} scaleTo={1.05} borderWidth={4} style={{ borderRadius: 16 }}>
-              {(focused) => {
+
+            <TvFocusable onPress={joinParty} borderWidth={0} scaleTo={1.04} style={s.btn}>
+              {(focused: boolean) => {
                 const canJoin = joinCode.length >= 4;
                 return (
-                  <View className={`py-6 rounded-xl flex-row justify-center items-center ${focused && canJoin ? 'bg-vortex-primary' :
-                      focused ? 'bg-white/20' :
-                        canJoin ? 'bg-[#222]' : 'bg-black/40'
-                    }`}>
-                    <Text className={`font-black text-2xl tracking-widest uppercase ${focused && canJoin ? 'text-black' :
-                        canJoin ? 'text-vortex-primary' : 'text-gray-600'
-                      }`}>Conectar</Text>
+                  <View style={[
+                    s.btnGrad,
+                    { backgroundColor: focused && canJoin ? '#4ade80' : focused ? 'rgba(255,255,255,0.1)' : canJoin ? 'rgba(74,222,128,0.1)' : 'rgba(255,255,255,0.05)' },
+                    canJoin && !focused && { borderWidth: 1, borderColor: 'rgba(74,222,128,0.4)' },
+                  ]}>
+                    {isJoining
+                      ? <ActivityIndicator color={focused && canJoin ? '#000' : '#4ade80'} />
+                      : <Text style={[s.btnText, { color: focused && canJoin ? '#000' : canJoin ? '#4ade80' : '#555' }]}>
+                          Conectar
+                        </Text>
+                    }
                   </View>
                 );
               }}
@@ -107,19 +180,79 @@ export default function TvPartySetupScreen() {
           </View>
         </View>
 
-        {/* BOTÓN CANCELAR */}
-        <View className="mt-12">
-          <TvFocusable onPress={() => navigation.goBack()} borderWidth={3} style={{ borderRadius: 999 }}>
-            {(focused) => (
-              <View className={`flex-row items-center px-10 py-4 rounded-full ${focused ? 'bg-red-600' : 'bg-white/10'}`}>
-                <X color={focused ? "#fff" : "#9CA3AF"} size={24} />
-                <Text className={`font-bold text-xl uppercase ml-3 ${focused ? 'text-white' : 'text-gray-400'}`}>Cancelar</Text>
-              </View>
-            )}
-          </TvFocusable>
-        </View>
+        {/* ── CANCELAR ─────────────────────────────────────────────────────── */}
+        <TvFocusable onPress={() => navigation.goBack()} borderWidth={0} scaleTo={1.04} style={s.cancelBtn}>
+          {(focused: boolean) => (
+            <View style={[s.cancelInner, focused && { backgroundColor: '#ef4444', borderColor: '#ef4444' }]}>
+              <X color={focused ? '#fff' : '#9CA3AF'} size={16} />
+              <Text style={[s.cancelText, focused && { color: '#fff' }]}>Cancelar</Text>
+            </View>
+          )}
+        </TvFocusable>
 
       </View>
     </View>
   );
 }
+
+const s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#050505' },
+  inner: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 48 },
+
+  // Header
+  header: { alignItems: 'center', marginBottom: 32 },
+  headerIcon: {
+    width: 64, height: 64, borderRadius: 32,
+    backgroundColor: 'rgba(176,38,255,0.15)',
+    borderWidth: 1, borderColor: 'rgba(176,38,255,0.3)',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 14,
+  },
+  headerTitle: { color: '#fff', fontSize: 38, fontWeight: '900', letterSpacing: -0.5, marginBottom: 6 },
+  headerSub: { color: '#9ca3af', fontSize: 16, fontWeight: '500', maxWidth: width * 0.6, textAlign: 'center' },
+
+  // Columns
+  columns: { flexDirection: 'row', width: '100%', maxWidth: 900, gap: 24, marginBottom: 28 },
+  card: {
+    flex: 1, backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 24, padding: 28,
+  },
+  cardRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 10 },
+  cardTitle: { color: '#fff', fontSize: 20, fontWeight: '800' },
+
+  // Code
+  codeBox: {
+    backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 14,
+    borderWidth: 1, borderColor: 'rgba(176,38,255,0.2)',
+    padding: 16, alignItems: 'center', marginBottom: 20,
+  },
+  codeLabel: { color: '#6b7280', fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: 6 },
+  codeText: { color: '#B026FF', fontSize: 32, fontWeight: '900', letterSpacing: 6, fontVariant: ['tabular-nums'] as any },
+
+  // Input
+  input: {
+    backgroundColor: 'rgba(0,0,0,0.5)', color: '#fff',
+    borderWidth: 2, borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 14, padding: 14, fontSize: 28,
+    textAlign: 'center', letterSpacing: 6, marginBottom: 20, fontWeight: '700',
+  },
+  inputFocused: { borderColor: '#B026FF', backgroundColor: 'rgba(176,38,255,0.08)' },
+
+  // Buttons
+  btn: { borderRadius: 14 },
+  btnGrad: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 14, borderRadius: 14, gap: 10,
+  },
+  btnText: { color: '#fff', fontWeight: '900', fontSize: 16, letterSpacing: 1.2, textTransform: 'uppercase' },
+
+  // Cancel
+  cancelBtn: { borderRadius: 999 },
+  cancelInner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 28, paddingVertical: 10, borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+  },
+  cancelText: { color: '#9ca3af', fontWeight: '700', fontSize: 14 },
+});

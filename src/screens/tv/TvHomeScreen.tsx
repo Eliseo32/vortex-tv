@@ -17,6 +17,7 @@ import TvSearchScreen from './TvSearchScreen';
 import TvMyListScreen from './TvMyListScreen';
 
 import TvDiscoverScreen from './TvDiscoverScreen';
+import TvUserProfileScreen from './TvUserProfileScreen';
 
 const { height: windowHeight, width: windowWidth } = Dimensions.get('window');
 
@@ -29,12 +30,6 @@ interface ContentRow {
 }
 
 const HOME_ROWS: ContentRow[] = [
-  {
-    id: 'sports',
-    title: 'DEPORTES EN VIVO',
-    accent: '#39FF14',
-    filter: (i) => i.type === 'tv' && i.genre === 'Deportes',
-  },
   {
     id: 'movie',
     title: 'PELÍCULAS DESTACADAS',
@@ -133,11 +128,29 @@ export default function TvHomeScreen() {
 
   useEffect(() => { if (userId) fetchCloudContent(); }, [userId]);
 
-  // Hero: primeras 5 películas o series
-  const featuredItems = useMemo(
-    () => cloudContent.filter(i => i.type === 'movie' || i.type === 'series' || i.type === 'anime').slice(0, 5),
-    [cloudContent],
-  );
+  // Hero: Mix equilibrado de los últimos agregados
+  const featuredItems = useMemo(() => {
+    const movies = cloudContent.filter(i => i.type === 'movie');
+    const series = cloudContent.filter(i => i.type === 'series');
+    const anime = cloudContent.filter(i => i.type === 'anime');
+    
+    // Tratamos de tomar 2 pelis, 2 series y 1 anime para que haya total variedad
+    const mix: any[] = [];
+    if (movies[0]) mix.push(movies[0]);
+    if (series[0]) mix.push(series[0]);
+    if (movies[1]) mix.push(movies[1]);
+    if (series[1]) mix.push(series[1]);
+    if (anime[0]) mix.push(anime[0]);
+    
+    // Si la base de datos es pequeña y no llegamos a 5, cubrimos con lo que haya
+    if (mix.length < 5) {
+       const others = cloudContent.filter(i => i.type === 'movie' || i.type === 'series' || i.type === 'anime')
+         .filter(i => !mix.includes(i));
+       mix.push(...others.slice(0, 5 - mix.length));
+    }
+    
+    return mix;
+  }, [cloudContent]);
 
   useEffect(() => {
     if (featuredItems.length > 0 && !activeHeroItem) setActiveHeroItem(featuredItems[0]);
@@ -231,6 +244,7 @@ export default function TvHomeScreen() {
     if (currentTab === 'search') return <TvSearchScreen />;
     if (currentTab === 'mylist') return <TvMyListScreen />;
     if (currentTab === 'discover') return <TvDiscoverScreen currentTab={currentTab} />;
+    if (currentTab === 'profile') return <TvUserProfileScreen currentTab={currentTab} />;
 
     // ─── HOME ──────────────────────────────────────────────────────────────
     return (
@@ -353,23 +367,21 @@ export default function TvHomeScreen() {
                   )}
                 </View>
               )}
+
+              {/* ── AGENDA DEL DÍA ─ siempre visible bajo el hero */}
+              <TvAgendaSection />
             </View>
           }
-          renderItem={({ item: row }) => {
-            if (row.id === 'sports') {
-              return <TvAgendaSection key={row.id} />;
-            }
-            return (
-              <ContentRowView
-                key={row.id}
-                row={row}
-                onPress={(item) => {
-                  lastInteractionTime.current = Date.now();
-                  navigation.navigate('DetailTV', { item });
-                }}
-              />
-            );
-          }}
+          renderItem={({ item: row }) => (
+            <ContentRowView
+              key={row.id}
+              row={row}
+              onPress={(item) => {
+                lastInteractionTime.current = Date.now();
+                navigation.navigate('DetailTV', { item });
+              }}
+            />
+          )}
         />
       </View>
     );
