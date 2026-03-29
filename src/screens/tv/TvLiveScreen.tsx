@@ -15,8 +15,9 @@ interface TvLiveScreenProps {
 
 // ─── Mapa de etiquetas por genre ────────────────────────────────────────────
 const GENRE_LABEL: Record<string, string> = {
+  // Géneros originales
   Nacional: 'Canales Nacionales',
-  Deportes: 'Canales de Deporte',
+  Deportes: 'Deportes',
   Noticias: 'Noticias',
   Entretenimiento: 'Entretenimiento',
   Internacional: 'Internacionales',
@@ -24,6 +25,24 @@ const GENRE_LABEL: Record<string, string> = {
   Musica: 'Música',
   Peliculas: 'Películas & Cine',
   Regional: 'Canales Regionales',
+  // Categorías de TV Libre (tal como vienen de la web)
+  Argentina: 'Argentina',
+  Uruguay: 'Uruguay',
+  Paraguay: 'Paraguay',
+  Colombia: 'Colombia',
+  México: 'México',
+  Mexico: 'México',
+  España: 'España',
+  Espana: 'España',
+  Europa: 'Europa',
+  'Estados Unidos': 'EEUU',
+  Documentales: 'Documentales',
+  'Cine y Series': 'Cine & Series',
+  'Gastronomía': 'Gastronomía',
+  Gastronomia: 'Gastronomía',
+  'Música': 'Música',
+  Infantiles: 'Infantiles',
+  'Sin categoría': 'Sin categoría',
 };
 
 function getLabelForGenre(genre: string): string {
@@ -346,16 +365,17 @@ export default function TvLiveScreen({ category: propCategory, route }: any) {
         folder.options.forEach((opt: any, i: number) => {
           dynamicFolderChannels.push({
             id: `${folder.id}-opt-${i}`,
-            title: opt.name,
+            title: opt.name || folder.name,
             type: 'tv',
-            genre: folder.name,
+            // genre = categoría TV Libre (Argentina, Deportes, Uruguay, etc.)
+            genre: folder.genre || folder.name,
             poster: folder.logo || opt.logo || 'https://via.placeholder.com/300x169/222222/cccccc?text=TV',
             backdrop: folder.logo || opt.logo || '',
             videoUrl: opt.iframe,
-            description: `${folder.name} en directo`,
+            description: `${folder.genre || folder.name} en directo`,
             year: 'LIVE',
             rating: '',
-            _folder: folder,   // <- referencia a la carpeta para cambiar servidor
+            _folder: folder,
           });
         });
       });

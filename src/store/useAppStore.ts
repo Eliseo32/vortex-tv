@@ -68,6 +68,7 @@ export interface ChannelFolder {
   logo: string | null;
   options: ChannelOption[];
   order: number;
+  genre?: string; // Categoría TV Libre: Argentina, Deportes, etc.
 }
 
 interface AppState {
@@ -189,10 +190,9 @@ export const useAppStore = create<AppState>()(
 
         set({ isLoadingContent: true });
         try {
-          const [contentQuery, agendaQuery, nowfutbolQuery] = await Promise.all([
+          const [contentQuery, agendaQuery] = await Promise.all([
             getDocs(collection(db, 'content')),
             getDocs(query(collection(db, 'agenda'), orderBy('createdAt', 'desc'))),
-            getDocs(query(collection(db, 'canales_carpetas'), orderBy('order', 'asc'))),
           ]);
 
           const items: ContentItem[] = [];
@@ -201,63 +201,40 @@ export const useAppStore = create<AppState>()(
           const events: FeaturedEvent[] = [];
           agendaQuery.forEach((doc) => { events.push(doc.data() as FeaturedEvent); });
 
-          const nowfutbolFolders: ChannelFolder[] = [];
-          nowfutbolQuery.forEach((doc) => { nowfutbolFolders.push(doc.data() as ChannelFolder); });
-
-          let uniqueAngulismo: ChannelFolder[] = [];
-          try {
-            const angulismoQuery = await getDocs(collection(db, 'channelFolders'));
-            const seenNames = new Set(nowfutbolFolders.map(f => f.name.toLowerCase().trim()));
-            let angulismoIdx = 10000;
-            angulismoQuery.forEach((doc) => {
-              const folder = { ...doc.data() as ChannelFolder, order: angulismoIdx++ };
-              if (!seenNames.has(folder.name.toLowerCase().trim())) {
-                uniqueAngulismo.push(folder);
-              }
-            });
-          } catch (angErr) {
-            console.warn('channelFolders (angulismo) no disponible:', angErr);
-          }
-
-          // TV Libre canales
+          // ── TV en Vivo: solo canales de TV Libre, ordenados por categoría ──
+          // Los canales en tvlibre_channels están agrupados por categoría (argentina, deportes, etc.)
+          // y cada doc tiene: { name, order, channels: [{ name, logo, options: [{name, iframe}] }] }
           let tvlibreChannels: ChannelFolder[] = [];
           try {
             const tvlibreQuery = await getDocs(query(collection(db, 'tvlibre_channels'), orderBy('order', 'asc')));
-            const allSeenNames = new Set([
-              ...nowfutbolFolders.map(f => f.name.toLowerCase().trim()),
-              ...uniqueAngulismo.map(f => f.name.toLowerCase().trim()),
-            ]);
-            let tvlibreIdx = 20000;
+            // Reconstruir canales individuales preservando el orden de categoría de la página
             tvlibreQuery.forEach((docSnap) => {
               const data = docSnap.data();
-              // Cada doc tiene channels: [{ name, logo, options: [{ name, iframe }] }]
               if (data.channels && Array.isArray(data.channels)) {
-                for (const ch of data.channels) {
-                  if (!allSeenNames.has(ch.name.toLowerCase().trim())) {
-                    tvlibreChannels.push({
-                      id: `tvlibre-${docSnap.id}-${ch.name}`,
-                      name: ch.name,
-                      logo: ch.logo || null,
-                      options: (ch.options || []).map((opt: any) => ({
-                        name: opt.name || ch.name,
-                        iframe: opt.iframe || '',
-                      })),
-                      order: tvlibreIdx++,
-                    });
-                  }
-                }
+                data.channels.forEach((ch: any, idx: number) => {
+                  tvlibreChannels.push({
+                    id: `tvlibre-${docSnap.id}-${idx}`,
+                    name: ch.name,
+                    logo: ch.logo || null,
+                    // genre usa el nombre de la categoría (Argentina, Deportes, etc.)
+                    genre: data.name,
+                    options: (ch.options || []).map((opt: any) => ({
+                      name: opt.name || ch.name,
+                      iframe: opt.iframe || '',
+                    })),
+                    order: (data.order || 0) * 1000 + idx,
+                  });
+                });
               }
             });
           } catch (tvlErr) {
             console.warn('tvlibre_channels no disponible:', tvlErr);
           }
 
-          const mergedFolders: ChannelFolder[] = [...nowfutbolFolders, ...uniqueAngulismo, ...tvlibreChannels];
-
           set({
             cloudContent: items,
             featuredEvents: events,
-            channelFolders: mergedFolders,
+            channelFolders: tvlibreChannels,
             isLoadingContent: false,
           });
         } catch (error) {
