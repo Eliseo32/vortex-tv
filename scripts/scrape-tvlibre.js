@@ -163,16 +163,28 @@ async function scrapeChannelServers(channel) {
 
     for (const link of document.querySelectorAll('a')) {
         const text = (link.textContent || '').trim();
-        const href = link.getAttribute('href') || '';
+        let href = link.getAttribute('href') || '';
+        const onclick = link.getAttribute('onclick') || '';
 
-        if (!href || href === '#' || href.includes('#pc') || href === channel.url || href === '/') continue;
-
-        const isOption = text.match(/opci[oó]n\s*\d*/i) ||
-                         href.includes('/html/fl/') ||
+        const isOption = text.match(/opci[oó]n/i) || 
+                         link.className.includes('btn') || 
+                         href.includes('/html/fl/') || 
                          href.includes('/eventos/sin-chat/');
+                         
         if (!isOption) continue;
+        if (text.toLowerCase().includes('extensi')) continue; // Skip PC extensions
+        
+        let actualUrl = href;
+        
+        // Extract URL hidden in onclick attribute
+        const onclickMatch = onclick.match(/src\s*=\s*['"]([^'"]+)['"]/i);
+        if (onclickMatch && onclickMatch[1]) {
+            actualUrl = onclickMatch[1];
+        }
 
-        const fullHref = fixUrl(href.startsWith('http') ? href : `${BASE_URL}${href}`);
+        if (!actualUrl || actualUrl.startsWith('#') || actualUrl === '/') continue;
+
+        const fullHref = fixUrl(actualUrl.startsWith('http') ? actualUrl : `${BASE_URL}${actualUrl}`);
         if (!fullHref || seen.has(fullHref) || fullHref === channel.url) continue;
 
         seen.add(fullHref);
