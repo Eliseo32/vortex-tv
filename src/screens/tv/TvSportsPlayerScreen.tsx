@@ -78,9 +78,32 @@ const SPORTS_AFTER_LOAD_JS = `
   var attempts = 0, notified = false;
   var interval = setInterval(function(){
     if (++attempts > 80) { clearInterval(interval); return; }
+    
+    // Forzar pantalla completa mediante CSS duro
+    document.body.style.margin = '0';
+    document.body.style.padding = '0';
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    
     forceUnmute();
     var v = document.querySelector('video'), f = document.querySelector('iframe');
+    
+    // Si hay un iframe pero no hay video, hacer fullscreen el iframe
+    if (f && !v) {
+      f.style.cssText = 'position:fixed !important; top:0 !important; left:0 !important; width:100vw !important; height:100vh !important; z-index:999999 !important; border:none !important; background:#000 !important; margin:0 !important; padding:0 !important;';
+      if (attempts>4&&!notified){ notified=true; try{ window.ReactNativeWebView.postMessage('playing'); }catch(e){} }
+    }
+    
     if (v) {
+      // Intentar forzar estilos en contenedores padres de video comunes
+      try {
+        var p = v.closest('[class*="player"]') || v.parentElement;
+        if (p) p.style.cssText = 'position:fixed !important; top:0 !important; left:0 !important; width:100vw !important; height:100vh !important; z-index:999998 !important; background:#000 !important; margin:0 !important; padding:0 !important;';
+      } catch(e){}
+      
+      // Forzar fullscreen CSS al elemento video directamente
+      v.style.cssText = 'position:fixed !important; top:0 !important; left:0 !important; width:100vw !important; height:100vh !important; z-index:999999 !important; background:#000 !important; object-fit:contain !important; margin:0 !important; padding:0 !important;';
+
       // Forzar atributos de autoplay
       if (!v.__hooked) {
         v.__hooked = true;
@@ -96,10 +119,7 @@ const SPORTS_AFTER_LOAD_JS = `
         try{ v.play().catch(function(){}); }catch(e){}
       }
     }
-    if (f&&!v) {
-      f.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:999999;border:none;background:#000;';
-      if (attempts>4&&!notified){ notified=true; try{ window.ReactNativeWebView.postMessage('playing'); }catch(e){} }
-    }
+    
     // Clics en botones de play durante los primeros 15 ciclos (~12 segundos)
     if (attempts<=15) {
       ['.vjs-big-play-button','.jw-icon-display','.plyr__control--overlaid','.sound-button',
