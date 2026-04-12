@@ -110,13 +110,13 @@ const CHANNEL_LOGOS: Record<string, string> = {
   'local-53':    'https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/History_Logo.svg/280px-History_Logo.svg.png',
 };
 
-/** Dado un canal del scraper, retorna la URL de logo más apropiada */
+/** Dado un canal del scraper, retorna la URL de logo más apropiada.
+ * Prioridad: logos Wikipedia (conocidos, siempre disponibles) > poster del scraper
+ */
 function resolveChannelLogo(channel: { m3u8?: string | null; name?: string | null; poster?: string | null }): string | null {
-  // Si el scraper ya trajo un poster válido, usarlo
-  if (channel.poster && channel.poster.startsWith('http')) return channel.poster;
-  // Buscar por ID (m3u8)
+  // 1. Buscar por ID (m3u8) — Wikipedia logos son los más confiables en Android TV
   if (channel.m3u8 && CHANNEL_LOGOS[channel.m3u8]) return CHANNEL_LOGOS[channel.m3u8];
-  // Búsqueda por fragmento de nombre vs nombres conocidos
+  // 2. Buscar por fragmento de nombre
   if (channel.name) {
     const nameL = channel.name.toLowerCase();
     const nameMap: Record<string, string> = {
@@ -162,6 +162,8 @@ function resolveChannelLogo(channel: { m3u8?: string | null; name?: string | nul
       if (url && nameL.includes(fragment)) return url;
     }
   }
+  // 3. Usar el poster del scraper como fallback (puede fallar en Android TV por CORS)
+  if (channel.poster && channel.poster.startsWith('http')) return channel.poster;
   return null;
 }
 
@@ -194,6 +196,29 @@ async function fromFirestore(): Promise<ChocopopChannel[] | null> {
   }
 }
 
+// ─── Extrae el bloque completo de Streams contando brackets ──────────────────
+function extractStreamsBlock(html: string): string | null {
+  const startPatterns = [/var\s+Streams\s*=\s*\[/, /Streams\s*=\s*\[/];
+  for (const pattern of startPatterns) {
+    const startMatch = html.match(pattern);
+    if (!startMatch || startMatch.index === undefined) continue;
+    const openIdx = startMatch.index + startMatch[0].length - 1;
+    let depth = 0, inString = false, strChar = '', escaped = false;
+    for (let i = openIdx; i < html.length; i++) {
+      const c = html[i];
+      if (escaped) { escaped = false; continue; }
+      if (c === '\\' && inString) { escaped = true; continue; }
+      if (!inString && (c === '"' || c === "'")) { inString = true; strChar = c; }
+      else if (inString && c === strChar) { inString = false; }
+      else if (!inString) {
+        if (c === '[' || c === '{') depth++;
+        else if (c === ']' || c === '}') { depth--; if (depth === 0) return html.slice(openIdx, i + 1); }
+      }
+    }
+  }
+  return null;
+}
+
 // ─── Nivel 2: Scraping directo del sitio ─────────────────────────────────────
 async function fromScraping(): Promise<ChocopopChannel[] | null> {
   try {
@@ -212,13 +237,34 @@ async function fromScraping(): Promise<ChocopopChannel[] | null> {
     if (!resp.ok) return null;
     const html = await resp.text();
 
-    const match = html.match(/var\s+Streams\s*=\s*(\[[\s\S]*?\]);/);
-    if (!match?.[1]) {
+    // Usar el extractor por conteo de brackets (más robusto que regex)
+    const rawBlock = extractStreamsBlock(html);
+    if (!rawBlock) {
       console.warn('[ChocopopService] No se encontró var Streams');
       return null;
     }
 
-    const raw: any[] = JSON.parse(match[1]);
+    let raw: any[] | null = null;
+
+    // Intento 1: JSON.parse
+    try { raw = JSON.parse(rawBlock); } catch (_) {}
+
+    // Intento 2: sanitizar trailing commas
+    if (!raw) {
+      try {
+        const sanitized = rawBlock
+          .replace(/\/\/[^\n]*/g, '')
+          .replace(/,\s*([\]}])/g, '$1')
+          .trim();
+        raw = JSON.parse(sanitized);
+      } catch (_) {}
+    }
+
+    // Intento 3: Function eval
+    if (!raw) {
+      try { raw = new Function(`"use strict"; return (${rawBlock})`)() as any[]; } catch (_) {}
+    }
+
     if (!Array.isArray(raw) || raw.length === 0) return null;
 
     const channels: ChocopopChannel[] = raw

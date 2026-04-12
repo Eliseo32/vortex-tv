@@ -102,58 +102,97 @@ function sanitizeJsArray(raw) {
         .trim();
 }
 
-// ─── Extrae var Streams del HTML ─────────────────────────────────────────────
-function extractStreams(html) {
-    const patterns = [
-        /var\s+Streams\s*=\s*(\[[\s\S]*?\])\s*;/,
-        /Streams\s*=\s*(\[[\s\S]*?\])\s*;/,
-        /var\s+Streams\s*=\s*(\[[\s\S]*?\])/,
-        /Streams\s*=\s*(\[[\s\S]*?\])/,
+// ─── Extrae el bloque completo de var Streams contando brackets ──────────────
+function extractStreamsBlock(html) {
+    // Encontrar el comienzo del array
+    const startPatterns = [
+        /var\s+Streams\s*=\s*\[/,
+        /Streams\s*=\s*\[/,
     ];
 
-    for (const pattern of patterns) {
-        const match = html.match(pattern);
-        if (!match?.[1]) continue;
+    for (const pattern of startPatterns) {
+        const startMatch = html.match(pattern);
+        if (!startMatch) continue;
 
-        const rawBlock = match[1];
-        console.log(`🔍 Bloque capturado (inicio): ${rawBlock.slice(0, 150).replace(/\n/g, ' ')}`);
+        const openBracketIdx = startMatch.index + startMatch[0].length - 1; // posición del '['
+        let depth = 0;
+        let inString = false;
+        let stringChar = '';
+        let escaped = false;
 
-        // Intento 1: JSON.parse directo
-        try {
-            const parsed = JSON.parse(rawBlock);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-                console.log(`✅ Parseado con JSON.parse: ${parsed.length} canales`);
-                return parsed;
+        for (let i = openBracketIdx; i < html.length; i++) {
+            const ch = html[i];
+
+            if (escaped) { escaped = false; continue; }
+            if (ch === '\\' && inString) { escaped = true; continue; }
+
+            if (!inString && (ch === '"' || ch === "'")) {
+                inString = true;
+                stringChar = ch;
+            } else if (inString && ch === stringChar) {
+                inString = false;
+            } else if (!inString) {
+                if (ch === '[' || ch === '{') depth++;
+                else if (ch === ']' || ch === '}') {
+                    depth--;
+                    if (depth === 0) {
+                        // Encontramos el cierre del array principal
+                        const block = html.slice(openBracketIdx, i + 1);
+                        console.log(`🔍 Bloque extraído: ${block.length} chars, inicio: ${block.slice(0, 80).replace(/\n/g, ' ')}`);
+                        return block;
+                    }
+                }
             }
-        } catch (_) {}
-
-        // Intento 2: sanitizar trailing commas y reintentar
-        try {
-            const sanitized = sanitizeJsArray(rawBlock);
-            const parsed = JSON.parse(sanitized);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-                console.log(`✅ Parseado tras sanitizar: ${parsed.length} canales`);
-                return parsed;
-            }
-        } catch (_) {}
-
-        // Intento 3: Function eval (seguro en Node server-side)
-        try {
-            const result = new Function(`"use strict"; return (${rawBlock})`)();
-            if (Array.isArray(result) && result.length > 0) {
-                console.log(`✅ Parseado con Function eval: ${result.length} canales`);
-                return result;
-            }
-        } catch (e) {
-            console.warn(`⚠️  Function eval falló: ${e.message.slice(0, 80)}`);
         }
     }
+    return null;
+}
 
-    // Intento final: extraer objetos individuales con regex
+// ─── Extrae var Streams del HTML ─────────────────────────────────────────────
+function extractStreams(html) {
+    const rawBlock = extractStreamsBlock(html);
+    if (!rawBlock) {
+        console.error('❌ No se encontró var Streams en el HTML');
+        return null;
+    }
+
+    // Intento 1: JSON.parse directo
+    try {
+        const parsed = JSON.parse(rawBlock);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+            console.log(`✅ Parseado con JSON.parse: ${parsed.length} canales`);
+            return parsed;
+        }
+    } catch (_) {}
+
+    // Intento 2: sanitizar trailing commas y reintentar
+    try {
+        const sanitized = sanitizeJsArray(rawBlock);
+        const parsed = JSON.parse(sanitized);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+            console.log(`✅ Parseado tras sanitizar: ${parsed.length} canales`);
+            return parsed;
+        }
+    } catch (_) {}
+
+    // Intento 3: Function eval — válido para JS que no es JSON estricto
+    try {
+        const result = new Function(`"use strict"; return (${rawBlock})`)();
+        if (Array.isArray(result) && result.length > 0) {
+            console.log(`✅ Parseado con Function eval: ${result.length} canales`);
+            return result;
+        }
+    } catch (e) {
+        console.warn(`⚠️  Function eval falló: ${e.message.slice(0, 100)}`);
+    }
+
+    // Intento 4: extraer objetos individuales con regex
     try {
         const objMatches = [...html.matchAll(/\{[^{}]*"name"\s*:\s*"[^"]+?"[^{}]*"url"\s*:\s*"[^"]+?"[^{}]*\}/g)];
         if (objMatches.length > 0) {
-            const channels = objMatches.map(m => { try { return JSON.parse(m[0]); } catch { return null; } }).filter(Boolean);
+            const channels = objMatches
+                .map(m => { try { return JSON.parse(m[0]); } catch { return null; } })
+                .filter(Boolean);
             if (channels.length > 0) {
                 console.log(`✅ Extraídos ${channels.length} canales por regex individual`);
                 return channels;
