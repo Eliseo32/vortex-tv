@@ -11,7 +11,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import {
-  View, Text, StyleSheet, Animated, BackHandler,
+  View, Text, StyleSheet, Animated, BackHandler, StatusBar,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -48,7 +48,7 @@ const AD_BLOCKER_BEFORE_LOAD = `
 })(); true;
 `;
 
-// Limpieza de ads en DOM + unmute
+// Limpieza de ads en DOM + unmute + autoplay agresivo
 const SPORTS_AFTER_LOAD_JS = `
 (function(){
   document.body.style.backgroundColor = '#000';
@@ -81,19 +81,29 @@ const SPORTS_AFTER_LOAD_JS = `
     forceUnmute();
     var v = document.querySelector('video'), f = document.querySelector('iframe');
     if (v) {
+      // Forzar atributos de autoplay
       if (!v.__hooked) {
         v.__hooked = true;
+        v.setAttribute('autoplay', '');
+        v.setAttribute('playsinline', '');
+        v.muted = false;
+        v.volume = 1;
         v.addEventListener('playing', function(){ if(!notified){ notified=true; try{ window.ReactNativeWebView.postMessage('playing'); }catch(e){} } });
         v.addEventListener('timeupdate', function(){ if(v.currentTime>0.1&&!notified){ notified=true; try{ window.ReactNativeWebView.postMessage('playing'); }catch(e){} } });
       }
-      if (attempts<=5 && v.paused) try{ v.play(); }catch(e){}
+      // Intentar play durante los primeros 30 ciclos (~24 segundos)
+      if (attempts<=30 && v.paused) {
+        try{ v.play().catch(function(){}); }catch(e){}
+      }
     }
     if (f&&!v) {
       f.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:999999;border:none;background:#000;';
       if (attempts>4&&!notified){ notified=true; try{ window.ReactNativeWebView.postMessage('playing'); }catch(e){} }
     }
-    if (attempts<=5) {
-      ['.vjs-big-play-button','.jw-icon-display','.plyr__control--overlaid','.sound-button'].forEach(function(sel){
+    // Clics en botones de play durante los primeros 15 ciclos (~12 segundos)
+    if (attempts<=15) {
+      ['.vjs-big-play-button','.jw-icon-display','.plyr__control--overlaid','.sound-button',
+       '[aria-label="Play"]','[title="Play"]','.play-btn','.play-button'].forEach(function(sel){
         var b=document.querySelector(sel); if(b) try{ b.click(); }catch(e){}
       });
     }
@@ -241,6 +251,11 @@ function SportWebView({ url, onM3u8Detected, onNextServer, currentServerIndex, s
 export default function TvSportsPlayerScreen() {
   useKeepAwake();
 
+  // ── Ocultar status bar + modo inmersivo al entrar al reproductor ──────────
+  useEffect(() => {
+    StatusBar.setHidden(true, 'none');
+    return () => StatusBar.setHidden(false, 'fade');
+  }, []);
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
 
