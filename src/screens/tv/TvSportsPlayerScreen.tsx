@@ -130,13 +130,14 @@ interface SportWebViewProps {
   url: string;
   onM3u8Detected: (m3u8Url: string) => void;
   onNextServer: () => void;
+  onVideoPlaying: () => void;   // ← callback al padre para fade del badge
   currentServerIndex: number;
   serverCount: number;
   title: string;
   isLocked: boolean;
 }
 
-function SportWebView({ url, onM3u8Detected, onNextServer, currentServerIndex, serverCount, title, isLocked }: SportWebViewProps) {
+function SportWebView({ url, onM3u8Detected, onNextServer, onVideoPlaying, currentServerIndex, serverCount, title, isLocked }: SportWebViewProps) {
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const [retryNoReferer, setRetryNoReferer] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -238,6 +239,7 @@ function SportWebView({ url, onM3u8Detected, onNextServer, currentServerIndex, s
         onMessage={(e) => {
           if (e.nativeEvent.data === 'playing') {
             setIsVideoPlaying(true);
+            onVideoPlaying();   // ← avisa al padre para que haga fade del badge
             if (retryRef.current) clearTimeout(retryRef.current);
           }
         }}
@@ -343,6 +345,7 @@ export default function TvSportsPlayerScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>
+      <StatusBar hidden />
       <SportWebView
         url={currentUrl}
         title={title}
@@ -351,11 +354,12 @@ export default function TvSportsPlayerScreen() {
         isLocked={isLocked}
         onM3u8Detected={(m3u8) => setInterceptedM3u8(m3u8)}
         onNextServer={handleNextServer}
+        onVideoPlaying={handleVideoPlaying}
       />
 
       {/* Badge flotante con back + título + siguiente servidor */}
       <Animated.View style={[styles.badge, { opacity: badgeOpacity }]} pointerEvents="box-none">
-        <TvFocusable onPress={() => navigation.goBack()} borderWidth={0} scaleTo={1.1} style={{ borderRadius: 50 }}>
+        <TvFocusable onPress={() => navigation.goBack()} borderWidth={0} scaleTo={1.1} style={{ borderRadius: 50 }} hasTVPreferredFocus={true}>
           {(f: boolean) => (
             <View style={[styles.badgeBtn, f && styles.badgeBtnFocused]}>
               <ArrowLeft color={f ? '#000' : '#fff'} size={20} />
