@@ -128,13 +128,22 @@ interface SportWebViewProps {
 
 function SportWebView({ url, onM3u8Detected, onNextServer, currentServerIndex, serverCount, title, isLocked }: SportWebViewProps) {
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [retryNoReferer, setRetryNoReferer] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setIsVideoPlaying(false);
-    timeoutRef.current = setTimeout(() => setIsVideoPlaying(true), 25000);
-    return () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); };
+    setRetryNoReferer(false);
+    // Si en 30s no detecta video, reintenta sin Referer (por si el servidor rechaza el origin)
+    retryRef.current = setTimeout(() => setRetryNoReferer(true), 30000);
+    // Timeout de 55s para mostrar overlay de "parece que está cargando"
+    timeoutRef.current = setTimeout(() => setIsVideoPlaying(true), 55000);
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      if (retryRef.current) clearTimeout(retryRef.current);
+    };
   }, [url]);
 
   useEffect(() => {
@@ -158,6 +167,18 @@ function SportWebView({ url, onM3u8Detected, onNextServer, currentServerIndex, s
 
   const isWaiting = !isVideoPlaying;
 
+  // Headers: primero con Referer, si falla reintenta sin headers (algunos servidores bloquean por Origin)
+  const webViewSource = retryNoReferer
+    ? { uri: url }
+    : {
+        uri: url,
+        headers: {
+          'Referer': getDomainReferer(url),
+          'Origin': getDomainReferer(url).replace(/\/$/, ''),
+          'X-Requested-With': '',
+        }
+      };
+
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>
       {isWaiting && (
@@ -169,7 +190,13 @@ function SportWebView({ url, onM3u8Detected, onNextServer, currentServerIndex, s
             </View>
             <Text style={styles.waitTitle} numberOfLines={2}>{title}</Text>
             <Text style={styles.waitSub}>Servidor {currentServerIndex + 1} de {serverCount}</Text>
-            {currentServerIndex > 0 && (
+            {retryNoReferer && (
+              <View style={styles.switchRow}>
+                <RefreshCw color="#B026FF" size={12} />
+                <Text style={styles.switchText}>Reintentando sin restricciones...</Text>
+              </View>
+            )}
+            {!retryNoReferer && currentServerIndex > 0 && (
               <View style={styles.switchRow}>
                 <RefreshCw color="#B026FF" size={12} />
                 <Text style={styles.switchText}>Buscando mejor señal...</Text>
@@ -179,15 +206,8 @@ function SportWebView({ url, onM3u8Detected, onNextServer, currentServerIndex, s
         </View>
       )}
       <WebView
-        key={`wv-${currentServerIndex}`}
-        source={{
-          uri: url,
-          headers: {
-            'Referer': getDomainReferer(url),
-            'Origin': getDomainReferer(url).replace(/\/$/, ''),
-            'X-Requested-With': '',
-          }
-        }}
+        key={`wv-${currentServerIndex}-${retryNoReferer ? 'no-ref' : 'ref'}`}
+        source={webViewSource}
         style={{ flex: 1, opacity: isWaiting ? 0 : 1, backgroundColor: '#000' }}
         userAgent={CHROME_UA}
         allowsFullscreenVideo
@@ -205,7 +225,12 @@ function SportWebView({ url, onM3u8Detected, onNextServer, currentServerIndex, s
         originWhitelist={['*']}
         setSupportMultipleWindows={false}
         javaScriptCanOpenWindowsAutomatically={false}
-        onMessage={(e) => { if (e.nativeEvent.data === 'playing') setIsVideoPlaying(true); }}
+        onMessage={(e) => {
+          if (e.nativeEvent.data === 'playing') {
+            setIsVideoPlaying(true);
+            if (retryRef.current) clearTimeout(retryRef.current);
+          }
+        }}
         onShouldStartLoadWithRequest={handleShouldStartLoad}
       />
     </View>

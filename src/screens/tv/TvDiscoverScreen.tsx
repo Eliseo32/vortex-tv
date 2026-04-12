@@ -72,11 +72,12 @@ const CategoryBtn = React.memo(function CategoryBtn({
 });
 
 // ─── Content Row ──────────────────────────────────────────────────────────────
-function ContentRow({ title, data, accent, onPress }: {
+function ContentRow({ title, data, accent, onPress, onEndReached }: {
   title: string;
   data: any[];
   accent: string;
   onPress: (item: any) => void;
+  onEndReached?: () => void;
 }) {
   if (!data || data.length === 0) return null;
   return (
@@ -89,11 +90,10 @@ function ContentRow({ title, data, accent, onPress }: {
         horizontal
         showsHorizontalScrollIndicator={false}
         data={data}
-        keyExtractor={(i) => i.id}
+        keyExtractor={(i, index) => `${i.id}-${index}`}
         contentContainerStyle={{ paddingHorizontal: 56, paddingBottom: 20 }}
         initialNumToRender={5}
         maxToRenderPerBatch={4}
-        windowSize={5}
         renderItem={({ item }) => (
           <TvMovieCard
             item={item}
@@ -103,6 +103,27 @@ function ContentRow({ title, data, accent, onPress }: {
             height={260}
           />
         )}
+        onEndReached={onEndReached}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={
+          (data.length >= 20 && onEndReached) ? (
+            <TvFocusable onPress={onEndReached} scaleTo={1.05} style={{ alignSelf: 'center', marginLeft: 16 }}>
+              {(focused: boolean) => (
+                <View style={{
+                  width: 180, height: 260, borderRadius: 14,
+                  backgroundColor: focused ? accent : '#0a0a0a',
+                  justifyContent: 'center', alignItems: 'center',
+                  borderWidth: 2, borderColor: focused ? '#fff' : 'rgba(255,255,255,0.05)',
+                  elevation: focused ? 10 : 0
+                }}>
+                  <Text style={{ color: focused ? '#fff' : '#6B7280', fontWeight: '900', fontSize: 18, textAlign: 'center', letterSpacing: 2 }}>
+                    VER MÁS
+                  </Text>
+                </View>
+              )}
+            </TvFocusable>
+          ) : null
+        }
       />
     </View>
   );
@@ -114,15 +135,15 @@ export default function TvDiscoverScreen({ currentTab }: { currentTab: string })
   const { cloudContent, watchHistory } = useAppStore();
 
   const trendingMovies = useMemo(
-    () => cloudContent.filter((i) => i.type === 'movie').slice(0, 15),
+    () => cloudContent.filter((i) => i.type === 'movie'),
     [cloudContent],
   );
   const trendingSeries = useMemo(
-    () => cloudContent.filter((i) => i.type === 'series').slice(0, 15),
+    () => cloudContent.filter((i) => i.type === 'series'),
     [cloudContent],
   );
   const trendingAnime = useMemo(
-    () => cloudContent.filter((i) => i.type === 'anime').slice(0, 15),
+    () => cloudContent.filter((i) => i.type === 'anime'),
     [cloudContent],
   );
 
@@ -202,10 +223,10 @@ export default function TvDiscoverScreen({ currentTab }: { currentTab: string })
       </View>
 
       {/* 4. FILAS DE CONTENIDO */}
-      <ContentRow title="PELÍCULAS DESTACADAS" data={trendingMovies} accent="#BF5AF2" onPress={handleContentPress} />
-      <ContentRow title="SERIES TOP" data={trendingSeries} accent="#FF375F" onPress={handleContentPress} />
+      <ContentRow title="PELÍCULAS DESTACADAS" data={trendingMovies} accent="#BF5AF2" onPress={handleContentPress} onEndReached={() => useAppStore.getState().fetchMoreContent()} />
+      <ContentRow title="SERIES TOP" data={trendingSeries} accent="#FF375F" onPress={handleContentPress} onEndReached={() => useAppStore.getState().fetchMoreContent()} />
       {trendingAnime.length > 0 && (
-        <ContentRow title="ANIME DE TEMPORADA" data={trendingAnime} accent="#FFD60A" onPress={handleContentPress} />
+        <ContentRow title="ANIME DE TEMPORADA" data={trendingAnime} accent="#FFD60A" onPress={handleContentPress} onEndReached={() => useAppStore.getState().fetchMoreContent()} />
       )}
 
     </ScrollView>

@@ -607,7 +607,7 @@ export default function TvSportsScreen() {
                             horizontal
                             showsHorizontalScrollIndicator={false}
                             data={group.items}
-                            keyExtractor={item => item.id}
+                            keyExtractor={(item, index) => item.id ? `sport-${item.id}-${index}` : `sport-item-${index}`}
                             contentContainerStyle={{ paddingHorizontal: 56, paddingBottom: 8 }}
                             initialNumToRender={5}
                             windowSize={3}

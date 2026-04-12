@@ -1,9 +1,89 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, ScrollView, Image, Dimensions, Modal, FlatList, StyleSheet } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, ScrollView, Image, Dimensions, Modal, FlatList, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useAppStore } from '../../store/useAppStore';
 import TvFocusable from '../../components/tv/TvFocusable';
 import { LinearGradient } from 'expo-linear-gradient';
+
+// ── Cuevana on-demand link fetcher ────────────────────────────────────────────
+const CUEVANA_HEADERS = {
+  'Referer': 'https://cuevana.gs/',
+  'Origin': 'https://cuevana.gs',
+  'Accept': 'application/json, */*',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36',
+};
+
+function fetchWithTimeout(url: string, ms = 12000): Promise<Response> {
+  // AbortSignal.timeout() no disponible en Hermes → usamos AbortController manual
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  return fetch(url, { headers: CUEVANA_HEADERS, signal: controller.signal })
+    .finally(() => clearTimeout(timer));
+}
+
+async function fetchCuevanaLinks(postId: string): Promise<{ name: string; url: string; server?: string }[]> {
+  try {
+    const res = await fetchWithTimeout(`https://cuevana.gs/wp-api/v1/player?postId=${postId}&demo=0`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    const embeds: any[] = data?.data?.embeds || [];
+    const servers = embeds
+      .filter((e: any) => e.url && e.url.includes('cuevana.gs/player.php'))
+      .map((e: any) => {
+        // e.server siempre es "Online" (genérico) — el nombre real está en la URL
+        // https://cuevana.gs/player.php?t=TOKEN&server=vimeos → "vimeos"
+        let serverKey = 'online';
+        try { serverKey = new URL(e.url).searchParams.get('server') || 'online'; } catch {}
+        return {
+          name: `${e.lang || 'Latino'} · ${e.quality || 'HD'}`,
+          url: e.url,
+          server: serverKey,
+        };
+      });
+    // Reordenar: goodstream primero (sin anuncios con auto-play), vimeos último (tiene pre-roll)
+    const PRIORITY = ['goodstream', 'hlswish', 'streamwish', 'filemoon', 'doodstream'];
+    servers.sort((a, b) => {
+      const aKey = a.server?.toLowerCase() || '';
+      const bKey = b.server?.toLowerCase() || '';
+      // vimeos siempre al final
+      if (aKey === 'vimeos') return 1;
+      if (bKey === 'vimeos') return -1;
+      // Priorizar los que están en PRIORITY
+      const aIdx = PRIORITY.findIndex(p => aKey.includes(p));
+      const bIdx = PRIORITY.findIndex(p => bKey.includes(p));
+      if (aIdx >= 0 && bIdx >= 0) return aIdx - bIdx;
+      if (aIdx >= 0) return -1;
+      if (bIdx >= 0) return 1;
+      return 0;
+    });
+    return servers;
+
+
+  } catch (err) {
+    console.warn('[Cuevana] fetchLinks error:', err);
+    return [];
+  }
+}
+
+async function fetchCuevanaEpisodeLinks(seriesId: string, season: number, episode: number): Promise<string[]> {
+  try {
+    const res = await fetchWithTimeout(
+      `https://cuevana.gs/wp-api/v1/single/episodes/list?_id=${seriesId}&season=${season}&page=1&postsPerPage=50`
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    const posts: any[] = data?.data?.posts || [];
+    const ep = posts.find((p: any) =>
+      p.episode_number === episode || p.number === episode || p.order === episode
+    ) || posts[episode - 1];
+    if (!ep?._id) return [];
+    const links = await fetchCuevanaLinks(ep._id.toString());
+    return links.map((l: any) => l.url);
+  } catch (err) {
+    console.warn('[Cuevana] fetchEpisodeLinks error:', err);
+    return [];
+  }
+}
 
 const { height: windowHeight } = Dimensions.get('window');
 
@@ -36,10 +116,15 @@ export default function TvDetailScreen() {
 
   const [showServerModal, setShowServerModal] = useState(false);
   const [actionType, setActionType] = useState<'play' | 'party' | null>('play');
-  
+  const [fetchingLink, setFetchingLink] = useState(false);
+  // Servidores cacheados: se llenan al reproducir/abrir modal (on-demand si es Cuevana)
+  const [cachedServers, setCachedServers] = useState<{ name: string; url: string }[]>([]);
+
   const isSeries = item?.type === 'series' || item?.type === 'anime';
   const isLiveTV = item?.type === 'tv';
   const hasSeasons = isSeries && item?.seasonsData && item.seasonsData.length > 0;
+  const isCuevana = (item?.source === 'cuevana' || item?.source === 'cuevana-bi') && !!item?.tmdb_id;
+  const isCuevanaBi = item?.source === 'cuevana-bi';
 
   const [selectedSeason, setSelectedSeason] = useState(1);
   const [selectedEpisode, setSelectedEpisode] = useState(1);
@@ -55,55 +140,145 @@ export default function TvDetailScreen() {
 
   if (!item) return <View style={{ flex: 1, backgroundColor: '#050505' }} />;
   const isSaved = isInMyList(item.id);
-  
+
   const currentSeasonData = item.seasonsData?.find((s: any) => s.season === selectedSeason);
-  const episodesArray = Array.from({ length: currentSeasonData?.episodes || 0 }, (_, i) => i + 1);
+  const currentSeasonCount = Array.isArray(currentSeasonData?.episodes) 
+    ? currentSeasonData.episodes.length 
+    : (currentSeasonData?.episodes || 0);
+
+  const episodesArray = Array.from({ length: currentSeasonCount }, (_, i) => i + 1);
 
   // ─── Funciones de Lógica de Reproducción ──────────────────────────────────
-  const getServersForEpisode = (season: number, ep: number) => {
-    if (isSeries && item.tmdb_id) {
-      const linksData = item.episodeLinks && item.episodeLinks[`${season}-${ep}`];
+  const getStoredServers = (season: number, ep: number) => {
+    if (isSeries) {
+      // 1. Intentar obtener desde seasonsData (formato nuevo La.Movie)
+      const seasonObj = item.seasonsData?.find((s: any) => s.season === season);
+      if (seasonObj && Array.isArray(seasonObj.episodes)) {
+         const epObj = seasonObj.episodes.find((e: any) => e.episodeNumber === ep) || seasonObj.episodes[ep - 1];
+         if (epObj) {
+            if (epObj.servers && epObj.servers.length > 0) return epObj.servers.map((s:any) => ({ name: s.name || s.server || 'SERVIDOR PREMIUM', url: s.url }));
+            if (epObj.videoUrl) return [{ name: 'SERVIDOR PRINCIPAL', url: epObj.videoUrl }];
+         }
+      }
+
+      // 2. Fallback al clásico episodeLinks
+      const linksData = item.episodeLinks?.[`${season}-${ep}`];
       if (linksData) {
-        return Array.isArray(linksData) 
-          ? linksData.map((l, i) => typeof l === 'string' ? { name: `SERVIDOR ${i + 1}`, url: l } : l) 
+        return Array.isArray(linksData)
+          ? linksData.map((l: any, i: number) => typeof l === 'string' ? { name: `SERVIDOR ${i + 1}`, url: l } : l)
           : [{ name: 'SERVIDOR PREMIUM', url: linksData }];
       }
       return [];
     }
-    const movieServers = item.servers && item.servers.length > 0 ? item.servers : (item.videoUrl ? [{ name: 'SERVIDOR PRINCIPAL', url: item.videoUrl }] : []);
-    return movieServers.map((srv: any, i: number) => typeof srv === 'string' ? { name: `SERVIDOR ${i + 1}`, url: srv } : srv);
+    const s = item.servers?.length > 0 ? item.servers : (item.videoUrl ? [{ name: 'SERVIDOR PRINCIPAL', url: item.videoUrl }] : []);
+    return s.map((srv: any, i: number) => typeof srv === 'string' ? { name: `SERVIDOR ${i + 1}`, url: srv } : srv);
   };
 
-  const directPlayEpisode = (season: number, ep: number) => {
-    setSelectedEpisode(ep);
-    const servers = getServersForEpisode(season, ep);
-    if (servers.length === 0) return;
-    
-    // Marcar como visto ANTES de navegar inmediatamente
-    markAsWatched(`${item.id}-s${season}-e${ep}`);
-    addToHistory(item, season, ep);
+  // Resuelve servidores: desde Firebase o fetch on-demand desde Cuevana
+  const resolveServers = useCallback(async (season: number, ep: number): Promise<{ name: string; url: string }[]> => {
+    // 1. Intentar desde caché local (ya buscado antes)
+    if (cachedServers.length > 0) return cachedServers;
 
-    navigation.navigate('PlayerTV', {
-      videoUrl: servers[0].url,
-      title: `${item.title} - T${season} E${ep}`,
-      seriesItem: item,
-      season,
-      episode: ep,
-    });
+    // 2. Intentar desde Firebase (links pre-guardados)
+    const stored = getStoredServers(season, ep);
+    if (stored.length > 0) {
+      setCachedServers(stored);
+      return stored;
+    }
+
+    // 3. cuevana-bi: construir URL directo (sin API call)
+    if (isCuevanaBi && item?.slug) {
+      let url: string;
+      if (isSeries) {
+        url = `https://cuevana.bi/serie/${item.slug}/temporada-${season}/episodio-${ep}`;
+      } else {
+        url = item.videoUrl || `https://cuevana.bi/pelicula/${item.slug}`;
+      }
+      const servers = [{ name: 'CUEVANA', url }];
+      setCachedServers(servers);
+      return servers;
+    }
+
+    // 4. cuevana.gs: Fetch on-demand desde API
+    if (!isCuevana) return [];
+    setFetchingLink(true);
+    try {
+      let servers: { name: string; url: string }[];
+      if (isSeries) {
+        const urls = await fetchCuevanaEpisodeLinks(item.tmdb_id, season, ep);
+        servers = urls.map((url, i) => ({ name: `Servidor ${i + 1}`, url }));
+      } else {
+        servers = await fetchCuevanaLinks(item.tmdb_id);
+      }
+      setCachedServers(servers);
+      return servers;
+    } finally {
+      setFetchingLink(false);
+    }
+  }, [item, isSeries, isCuevana, isCuevanaBi, cachedServers, selectedSeason, selectedEpisode]);
+
+
+  // Obtiene links: primero de Firebase; si vacío y es Cuevana, los busca on-demand
+  const resolveAndPlay = useCallback(async (season: number, ep: number, forParty = false) => {
+    setSelectedEpisode(ep);
+    // Reset caché si cambiamos de episodio
+    if (ep !== selectedEpisode || season !== selectedSeason) setCachedServers([]);
+
+    const servers = await resolveServers(season, ep);
+
+    if (servers.length === 0) {
+      Alert.alert('Sin señal', 'No se encontró link de reproducción para este título.');
+      return;
+    }
+
+    if (isSeries) {
+      markAsWatched(`${item.id}-s${season}-e${ep}`);
+      addToHistory(item, season, ep);
+    } else {
+      addToHistory(item);
+    }
+
+    if (forParty) {
+      navigation.navigate('PartySetup', { videoUrl: servers[0].url, title: item.title });
+      return;
+    }
+
+    if (item.genre === 'Deportes') {
+      navigation.navigate('SportsPlayerTV', { item });
+    } else if (isSeries) {
+      navigation.navigate('PlayerTV', {
+        videoUrl: servers[0].url,
+        title: `${item.title} - T${season} E${ep}`,
+        seriesItem: item, season, episode: ep,
+      });
+    } else {
+      navigation.navigate('PlayerTV', { videoUrl: servers[0].url, title: item.title });
+    }
+  }, [item, isSeries, isCuevana, selectedSeason]);
+
+  const directPlayEpisode = async (season: number, ep: number) => {
+    setActionType('play');
+    setSelectedEpisode(ep);
+    
+    const servers = await resolveServers(season, ep);
+    if (servers.length === 0) {
+      Alert.alert('Sin señal', 'No se encontró link de reproducción para este episodio.');
+      return;
+    }
+    
+    // Si hay un solo servidor, reproduce directo. Si hay más de 1, muestra el selector.
+    if (servers.length === 1) {
+      resolveAndPlay(season, ep, false);
+    } else {
+      setShowServerModal(true);
+    }
   };
 
   const handleMainPlay = () => {
     if (isSeries) {
-      directPlayEpisode(selectedSeason, selectedEpisode);
+      resolveAndPlay(selectedSeason, selectedEpisode, false);
     } else {
-      const servers = getServersForEpisode(1, 1);
-      if (servers.length === 0) return;
-      addToHistory(item);
-      if (item.genre === 'Deportes') {
-        navigation.navigate('SportsPlayerTV', { item });
-      } else {
-        navigation.navigate('PlayerTV', { videoUrl: servers[0].url, title: item.title });
-      }
+      resolveAndPlay(1, 1, false);
     }
   };
 
@@ -202,10 +377,28 @@ export default function TvDetailScreen() {
 
             {/* BOTONES */}
             <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-              <GlassButton title={isSeries ? "REPRODUCIR EP" : "REPRODUCIR"} isPrimary={true} onPress={handleMainPlay} />
+              {fetchingLink ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 16, marginBottom: 12,
+                  paddingHorizontal: 28, paddingVertical: 14, borderRadius: 8, borderWidth: 2,
+                  borderColor: '#B026FF', backgroundColor: 'rgba(176,38,255,0.2)' }}>
+                  <ActivityIndicator size="small" color="#B026FF" style={{ marginRight: 10 }} />
+                  <Text style={{ fontWeight: '900', fontSize: 13, textTransform: 'uppercase',
+                    letterSpacing: 1.5, color: '#B026FF' }}>BUSCANDO ENLACE...</Text>
+                </View>
+              ) : (
+                <GlassButton title={isSeries ? "REPRODUCIR EP" : "REPRODUCIR"} isPrimary={true} onPress={handleMainPlay} />
+              )}
               <GlassButton title={isSaved ? "EN LISTA" : "MI LISTA"} onPress={() => toggleMyList(item.id)} />
-              {!isLiveTV && <GlassButton title="PARTY" onPress={() => { setActionType('party'); setShowServerModal(true); }} />}
-              {!isLiveTV && <GlassButton title="SERVIDORES" onPress={() => { setActionType('play'); setShowServerModal(true); }} />}
+              {!isLiveTV && <GlassButton title="PARTY" onPress={async () => {
+                setActionType('party');
+                await resolveServers(selectedSeason, selectedEpisode);
+                setShowServerModal(true);
+              }} />}
+              {!isLiveTV && <GlassButton title="SERVIDORES" onPress={async () => {
+                setActionType('play');
+                await resolveServers(selectedSeason, selectedEpisode);
+                setShowServerModal(true);
+              }} />}
             </View>
           </View>
 
@@ -227,7 +420,8 @@ export default function TvDetailScreen() {
           <View style={{ marginTop: 20 }}>
             {/* Títulos de Temporadas estilo Tags minimalistas */}
             <FlatList
-              horizontal showsHorizontalScrollIndicator={false} data={item.seasonsData} keyExtractor={(s: any) => s.season.toString()} 
+              horizontal showsHorizontalScrollIndicator={false} data={item.seasonsData} keyExtractor={(s: any, idx: number) => `season-${s.season}-${idx}`} 
+              nestedScrollEnabled scrollEnabled={false}
               contentContainerStyle={{ paddingLeft: 70, marginBottom: 32 }}
               renderItem={({ item: s }: any) => (
                 <TvFocusable onPress={() => setSelectedSeason(s.season)} borderWidth={0} style={{ borderRadius: 6, marginRight: 32 }}>
@@ -247,7 +441,8 @@ export default function TvDetailScreen() {
 
             {/* Fila Horizontal de Episodios Extra Anchos */}
             <FlatList
-              horizontal showsHorizontalScrollIndicator={false} data={episodesArray} keyExtractor={(ep) => ep.toString()}
+              horizontal showsHorizontalScrollIndicator={false} data={episodesArray} keyExtractor={(ep, idx) => `ep-${ep}-${idx}`}
+              nestedScrollEnabled scrollEnabled={false}
               contentContainerStyle={{ paddingLeft: 70, paddingRight: 70, paddingBottom: 40 }}
               renderItem={({ item: epNum }) => {
                 const isEpWatched = isWatched(`${item.id}-s${selectedSeason}-e${epNum}`);
@@ -304,12 +499,39 @@ export default function TvDetailScreen() {
             </Text>
             
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
-              {getServersForEpisode(selectedSeason, selectedEpisode).map((srv: any, idx: number) => (
+              {fetchingLink ? (
+                <View style={{ alignItems: 'center', paddingVertical: 30 }}>
+                  <ActivityIndicator size="large" color="#B026FF" />
+                  <Text style={{ color: '#B026FF', fontWeight: '900', fontSize: 14,
+                    letterSpacing: 2, marginTop: 16, textTransform: 'uppercase' }}>Buscando servidores...</Text>
+                </View>
+              ) : (
+                (cachedServers.length > 0 ? cachedServers : getStoredServers(selectedSeason, selectedEpisode)).map((srv: any, idx: number) => (
                 <TvFocusable key={idx} onPress={() => {
                   setShowServerModal(false);
+                  
+                  // Grabar historial al reproducir
                   if (actionType === 'play') {
-                    if (item.genre === 'Deportes') navigation.navigate('SportsPlayerTV', { item: { ...item, videoUrl: srv.url } });
-                    else navigation.navigate('PlayerTV', { videoUrl: srv.url, title: item.title });
+                    if (isSeries) {
+                      markAsWatched(`${item.id}-s${selectedSeason}-e${selectedEpisode}`);
+                      addToHistory(item, selectedSeason, selectedEpisode);
+                    } else {
+                      addToHistory(item);
+                    }
+                  }
+
+                  if (actionType === 'play') {
+                    if (item.genre === 'Deportes') {
+                      navigation.navigate('SportsPlayerTV', { item: { ...item, videoUrl: srv.url } });
+                    } else if (isSeries) {
+                      navigation.navigate('PlayerTV', {
+                        videoUrl: srv.url,
+                        title: `${item.title} - T${selectedSeason} E${selectedEpisode}`,
+                        seriesItem: item, season: selectedSeason, episode: selectedEpisode,
+                      });
+                    } else {
+                      navigation.navigate('PlayerTV', { videoUrl: srv.url, title: item.title });
+                    }
                   } else {
                     navigation.navigate('PartySetup', { item, title: item.title, backdrop: item.backdrop, selectedVideoUrl: srv.url });
                   }
@@ -327,7 +549,8 @@ export default function TvDetailScreen() {
                     </View>
                   )}
                 </TvFocusable>
-              ))}
+                ))
+              )}
 
               <View style={{ marginTop: 20 }}>
                 <TvFocusable onPress={() => setShowServerModal(false)} borderWidth={0} style={{ borderRadius: 8 }}>

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { View, Text, TextInput, FlatList, useWindowDimensions } from 'react-native';
 import { Search } from 'lucide-react-native';
 import { useAppStore } from '../../store/useAppStore';
@@ -17,14 +17,73 @@ export default function TvSearchScreen() {
   const safeWidth = Math.max(screenWidth, 1000);
   const numColumns = 5;
   const CARD_WIDTH = (safeWidth - 104 - (16 * numColumns)) / numColumns;
+  const [results, setResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
-  const results = useMemo(() => {
-    if (!query.trim()) return [];
-    const q = query.toLowerCase().trim();
-    return cloudContent.filter(item =>
-      item.title.toLowerCase().includes(q) ||
-      (item.genre && item.genre.toLowerCase().includes(q))
-    );
+  useEffect(() => {
+    const fetchSearchResults = async () => {
+      if (!query.trim() || query.length < 2) {
+        setResults([]);
+        return;
+      }
+      setIsSearching(true);
+      
+      const q = query.trim();
+      const qLower = q.toLowerCase();
+      
+      // Búsqueda en caché local (instantánea)
+      const localMatches = cloudContent.filter(item =>
+        item.title.toLowerCase().includes(qLower) ||
+        (item.genre && item.genre.toLowerCase().includes(qLower))
+      );
+
+      try {
+        const { getFirestore, collection, query: fwQuery, where, getDocs, limit } = require('firebase/firestore');
+        const db = getFirestore();
+        
+        // Generar múltiples variantes de casing para cubrir cómo esté guardado en Firebase
+        const variants = new Set<string>();
+        // Original tal como lo escribió el usuario
+        variants.add(q);
+        // Title Case: "Avatar"
+        variants.add(q.charAt(0).toUpperCase() + q.slice(1).toLowerCase());
+        // Todo minúsculas: "avatar"
+        variants.add(qLower);
+        // Todo mayúsculas: "AVATAR"
+        variants.add(q.toUpperCase());
+        
+        // Lanzar queries en paralelo para todas las variantes
+        const queries = Array.from(variants).map(variant =>
+          getDocs(fwQuery(
+            collection(db, 'content'),
+            where('title', '>=', variant),
+            where('title', '<=', variant + '\uf8ff'),
+            limit(50)
+          ))
+        );
+        
+        const snapshots = await Promise.all(queries);
+        
+        const remoteMatches: any[] = [];
+        snapshots.forEach((snap: any) => {
+          snap.forEach((doc: any) => remoteMatches.push({ id: doc.id, ...doc.data() }));
+        });
+
+        // Unir remotos con locales y quitar duplicados por ID
+        const allMatches = [...localMatches, ...remoteMatches];
+        const unique = Array.from(new Map(allMatches.map(item => [item.id, item])).values());
+        
+        setResults(unique);
+      } catch (err) {
+        console.warn('Error en búsqueda remota:', err);
+        setResults(localMatches);
+      } finally {
+        setIsSearching(false);
+      }
+    };
+
+    const debounce = setTimeout(fetchSearchResults, 400);
+    return () => clearTimeout(debounce);
   }, [query, cloudContent]);
 
   return (
@@ -72,7 +131,7 @@ export default function TvSearchScreen() {
       ) : (
         <FlatList
           data={results}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item, index) => `${item.id}-${index}`}
           numColumns={numColumns}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 60, paddingHorizontal: 52 }}

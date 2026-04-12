@@ -19,21 +19,22 @@ import TvSportsPlayerScreen from '../screens/tv/TvSportsPlayerScreen';
 import TvDrmPlayerScreen from '../screens/tv/TvDrmPlayerScreen';
 import TvF1TelemetryScreen from '../screens/tv/TvF1TelemetryScreen';
 import TvChannelPlayerScreen from '../screens/tv/TvChannelPlayerScreen';
+import TvChocopopPlayerScreen from '../screens/tv/TvChocopopPlayerScreen';
 
 const Stack = createNativeStackNavigator();
 
 export default function AppNavigator() {
-  const { currentProfile, setUserId, fetchCloudContent } = useAppStore();
+  const { currentProfile, setUserId } = useAppStore();
   const [user, setUser] = useState<any>(null);
   const [loadingInitial, setLoadingInitial] = useState(true);
 
   useEffect(() => {
+    // Solo autenticación al arrancar — el catálogo se carga DESPUÉS de elegir perfil
+    // Esto permite que login y perfiles funcionen instantáneamente
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
       if (firebaseUser) {
         setUserId(firebaseUser.uid);
-        // Cargar catálogo al iniciar sesión (sin caché)
-        fetchCloudContent();
       } else {
         setUserId(null);
       }
@@ -71,6 +72,7 @@ export default function AppNavigator() {
           <Stack.Screen name="DrmPlayerTV" component={TvDrmPlayerScreen} options={{ animation: 'fade' }} />
           <Stack.Screen name="F1TelemetryTV" component={TvF1TelemetryScreen} options={{ animation: 'fade' }} />
           <Stack.Screen name="ChannelPlayerTV" component={TvChannelPlayerScreen} options={{ animation: 'fade' }} />
+          <Stack.Screen name="ChocopopPlayerTV" component={TvChocopopPlayerScreen} options={{ animation: 'fade' }} />
         </Stack.Group>
       )}
     </Stack.Navigator>

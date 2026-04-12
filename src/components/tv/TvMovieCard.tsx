@@ -3,8 +3,9 @@
  * Estructura: View contenedor con dimensiones fijas → imagen absolute →
  * gradiente inferior → metadata (tipo, título, año, rating, género).
  */
-import React, { useCallback } from 'react';
-import { View, Image, Text, StyleSheet } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import TvFocusable from './TvFocusable';
 
@@ -28,12 +29,18 @@ function TvMovieCard({
   const handleFocus = useCallback(() => {
     if (onFocusItem) onFocusItem(item);
   }, [item, onFocusItem]);
+  const [imgErr, setImgErr] = useState(false);
 
   const typeLabel =
     item.type === 'movie'  ? 'FILM'   :
     item.type === 'series' ? 'SERIES' :
     item.type === 'anime'  ? 'ANIME'  :
     item.type === 'tv'     ? 'LIVE'   : '';
+
+  // Colores de placeholder basados en el título (siempre diferentes)
+  const charCode = (item.title || '').charCodeAt(0) || 65;
+  const hue = (charCode * 37) % 360;
+  const placeholderColor = `hsl(${hue}, 45%, 22%)`;
 
   return (
     <TvFocusable
@@ -46,13 +53,17 @@ function TvMovieCard({
       {(focused: boolean) => (
         // ← View con dimensiones explícitas — IMPRESCINDIBLE para que
         //   la Image en position:absolute y el gradiente se vean
-        <View style={[styles.card, { width, height }]}>
-          {/* Poster como background */}
-          <Image
-            source={{ uri: item.poster }}
-            style={StyleSheet.absoluteFillObject}
-            resizeMode="cover"
-          />
+        <View style={[styles.card, { width, height, backgroundColor: placeholderColor }]}>
+          {/* Poster como background — con fallback si la URL falla */}
+          {!!item.poster && !imgErr && (
+            <Image
+              source={{ uri: item.poster }}
+              style={StyleSheet.absoluteFillObject}
+              contentFit="cover"
+              transition={200}
+              onError={() => setImgErr(true)}
+            />
+          )}
 
           {/* Gradiente inferior para legibilidad */}
           <LinearGradient

@@ -11,13 +11,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import TvMovieCard from '../../components/tv/TvMovieCard';
 import TvTopBar from '../../components/tv/TvTopBar';
 import TvFocusable from '../../components/tv/TvFocusable';
-import TvAgendaSection from '../../components/tv/TvAgendaSection';
+import TvChocopopSection from '../../components/tv/TvChocopopSection';
+import TvLiveSectionBanner from '../../components/tv/TvLiveSectionBanner';
 
 import TvSearchScreen from './TvSearchScreen';
 import TvMyListScreen from './TvMyListScreen';
-
 import TvDiscoverScreen from './TvDiscoverScreen';
 import TvUserProfileScreen from './TvUserProfileScreen';
+// TvChocopopPlayerScreen se usa como pantalla en el stack, no inline
 
 const { height: windowHeight, width: windowWidth } = Dimensions.get('window');
 
@@ -32,19 +33,19 @@ interface ContentRow {
 const HOME_ROWS: ContentRow[] = [
   {
     id: 'movie',
-    title: 'PELÍCULAS DESTACADAS',
+    title: 'PELÍCULAS RECIENTES',
     accent: '#b6a0ff',
     filter: (i) => i.type === 'movie',
   },
   {
     id: 'series',
-    title: 'SERIES TOP',
+    title: 'SERIES RECIENTES',
     accent: '#00e3fd',
     filter: (i) => i.type === 'series',
   },
   {
     id: 'anime',
-    title: 'ANIME',
+    title: 'ANIME RECIENTE',
     accent: '#ffb151',
     filter: (i) => i.type === 'anime',
   },
@@ -67,7 +68,7 @@ const PremiumHeroButton = ({ title, onPress, isPrimary = false, nextFocusUp, nex
 );
 
 // ─── Row de contenido del home (PREMIUM) ──────────────────────────────────────
-const ContentRowView = React.memo(function ContentRowView({ row, onPress }: { row: { id: string; title: string; accent: string; items: any[] }; onPress: (item: any) => void }) {
+const ContentRowView = React.memo(function ContentRowView({ row, onPress, onEndReached }: { row: { id: string; title: string; accent: string; items: any[] }; onPress: (item: any) => void; onEndReached: () => void }) {
   const renderCard = useCallback(({ item }: { item: any }) => {
     return <TvMovieCard item={item} onPress={() => onPress(item)} accentColor={row.accent} width={180} height={260} />;
   }, [onPress, row.accent]);
@@ -99,16 +100,26 @@ const ContentRowView = React.memo(function ContentRowView({ row, onPress }: { ro
         maxToRenderPerBatch={3}
         windowSize={5}
         removeClippedSubviews={true}
+        onEndReached={onEndReached}
+        onEndReachedThreshold={1.5}
+        ListFooterComponent={
+          row.items.length >= 10 ? (
+            <View style={{ width: 80, height: 260, justifyContent: 'center', alignItems: 'center', marginLeft: 8 }}>
+              <ActivityIndicator size="large" color={row.accent} />
+            </View>
+          ) : null
+        }
       />
     </View>
   );
 }, (prev, next) => prev.row.id === next.row.id && prev.row.items.length === next.row.items.length);
 
-const itemKeyExtractor = (item: any) => item.id;
+const itemKeyExtractor = (item: any, index: number) => `${item.id}-${index}`;
 
 export default function TvHomeScreen() {
   const navigation = useNavigation<any>();
-  const { cloudContent, fetchCloudContent, isLoadingContent, userId } = useAppStore();
+  const { cloudContent, fetchCloudContent, fetchMoreContent, isLoadingContent, userId } = useAppStore();
+
   const [currentTab, setCurrentTab] = useState('home');
   const [forceFocusTopBar, setForceFocusTopBar] = useState(false);
   const lastInteractionTime = useRef(Date.now());
@@ -126,7 +137,13 @@ export default function TvHomeScreen() {
   const scrollOffset = useRef(0);
   const backPressCount = useRef(0);
 
-  useEffect(() => { if (userId) fetchCloudContent(); }, [userId]);
+  useEffect(() => {
+    if (userId) {
+      // Cargamos 250 de cada uno: Total ~750 peliculas/series/animes.
+      // Suficiente para el inicio sin trabar la TV (1GB RAM).
+      fetchCloudContent();
+    }
+  }, [userId]);
 
   // Hero: Mix equilibrado de los últimos agregados
   const featuredItems = useMemo(() => {
@@ -181,11 +198,19 @@ export default function TvHomeScreen() {
     return () => clearInterval(interval);
   }, [featuredItems, fadeAnim]);
 
-  // Filas del home: solo mostramos filas con contenido
+  // Filas del home: filtradas y ORDENADAS por más recientes primero
   const contentRows = useMemo(() => {
     return HOME_ROWS.map(row => ({
       ...row,
-      items: cloudContent.filter(row.filter).slice(0, 20),
+      items: cloudContent
+               .filter(row.filter)
+               .sort((a, b) => {
+                 const yearA = parseInt(a.year) || 0;
+                 const yearB = parseInt(b.year) || 0;
+                 // Secundaria por fecha de actualización si el año es igual
+                 if (yearA === yearB) return (b.updatedAt || 0) - (a.updatedAt || 0);
+                 return yearB - yearA;
+               }),
     })).filter(row => row.items.length > 0);
   }, [cloudContent]);
 
@@ -235,9 +260,14 @@ export default function TvHomeScreen() {
 
   // Mark tab as visited on switch (lazy-mount tracking)
   const handleSetTab = useCallback((tab: string) => {
+    // 'live' abre una pantalla completa del stack (react-native-video no puede vivir inline)
+    if (tab === 'live') {
+      navigation.navigate('ChocopopPlayerTV');
+      return;
+    }
     visitedTabs.current.add(tab);
     setCurrentTab(tab);
-  }, []);
+  }, [navigation]);
 
   // ─── Renderizado por tab ───────────────────────────────────────────────────
   const renderContent = () => {
@@ -245,6 +275,7 @@ export default function TvHomeScreen() {
     if (currentTab === 'mylist') return <TvMyListScreen />;
     if (currentTab === 'discover') return <TvDiscoverScreen currentTab={currentTab} />;
     if (currentTab === 'profile') return <TvUserProfileScreen currentTab={currentTab} />;
+    // 'live' siempre navega al stack — no tiene render inline
 
     // ─── HOME ──────────────────────────────────────────────────────────────
     return (
@@ -252,7 +283,7 @@ export default function TvHomeScreen() {
         <FlatList
           ref={flatListRef}
           data={contentRows}
-          keyExtractor={itemKeyExtractor}
+          keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
           onScroll={handleScroll}
           scrollEventThrottle={100}
@@ -261,6 +292,9 @@ export default function TvHomeScreen() {
           maxToRenderPerBatch={2}
           windowSize={5}
           removeClippedSubviews={true}
+          onEndReached={fetchMoreContent}
+          onEndReachedThreshold={0.5}
+
           ListHeaderComponent={
             <View style={{ marginBottom: 40, paddingTop: 70 }}>
               {/* ── HERO BANNER ───────────────────── */}
@@ -368,14 +402,18 @@ export default function TvHomeScreen() {
                 </View>
               )}
 
-              {/* ── AGENDA DEL DÍA ─ siempre visible bajo el hero */}
-              <TvAgendaSection />
+              {/* ── BANNER TV EN VIVO ──────────────────────── */}
+              <TvLiveSectionBanner onOpenLiveTab={() => handleSetTab('live')} />
+
+              {/* ── EVENTOS CHOCOPOPFLOW ───────────────────────────── */}
+              <TvChocopopSection />
             </View>
           }
           renderItem={({ item: row }) => (
             <ContentRowView
               key={row.id}
               row={row}
+              onEndReached={fetchMoreContent}
               onPress={(item) => {
                 lastInteractionTime.current = Date.now();
                 navigation.navigate('DetailTV', { item });

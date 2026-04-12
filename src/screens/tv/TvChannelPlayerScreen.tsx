@@ -304,14 +304,7 @@ export default function TvChannelPlayerScreen() {
 
                     <WebView
                         ref={webViewRef}
-                        source={{
-                            uri: url,
-                            headers: {
-                                'Referer': getDomainReferer(url),
-                                'Origin': getDomainReferer(url).replace(/\/$/, ''),
-                                'X-Requested-With': '',
-                            },
-                        }}
+                        source={{ uri: url }}
                         userAgent={CHROME_UA}
                         style={{ flex: 1, backgroundColor: '#000', opacity: isVideoPlaying ? 1 : 0 }}
                         allowsFullscreenVideo

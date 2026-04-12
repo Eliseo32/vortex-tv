@@ -128,7 +128,7 @@ function TvChannelsVerticalGrid({ channels }: { channels: any[] }) {
           horizontal
           showsHorizontalScrollIndicator={false}
           data={availableTabs}
-          keyExtractor={(t) => t}
+          keyExtractor={(t, i) => `tab-${t}-${i}`}
           contentContainerStyle={{ paddingBottom: 10 }}
           renderItem={({ item }) => {
             const isActive = activeTab === item;
@@ -165,7 +165,7 @@ function TvChannelsVerticalGrid({ channels }: { channels: any[] }) {
       {/* Grid Vertical Principal */}
       <FlatList
         data={displayedChannels}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item, index) => item.id ? `${item.id}-${index}` : `channel-${index}`}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: 64, paddingBottom: 200 }}
         windowSize={5}
@@ -346,7 +346,7 @@ export default function TvLiveScreen({ category: propCategory, route }: any) {
   
   const activeCategory = propCategory || route?.params?.category || 'movie';
   const navigation = useNavigation<any>();
-  const { cloudContent, channelFolders } = useAppStore();
+  const { cloudContent, tvlibreChannels, fetchMoreContent, isLoadingContent } = useAppStore();
 
   const flatListRef = useRef<FlatList>(null);
   const scrollOffset = useRef(0);
@@ -355,13 +355,17 @@ export default function TvLiveScreen({ category: propCategory, route }: any) {
   const [carouselIndex, setCarouselIndex] = useState(0);
   const heroFadeAnim = useRef(new Animated.Value(1)).current;
 
+  // Filtros dinámicos para el catálogo
+  const [activeFilter, setActiveFilter] = useState('Todos');
+  const availableFilters = ['Todos', 'Estrenos', 'Mejores Valoradas', 'Acción', 'Terror', 'Comedia', 'Ficción', 'Drama', 'Animación'];
+
   // Todo el contenido de la categoría seleccionada unida con las carpetas de canales M3U8
   const filteredContent = useMemo(() => {
-    const baseContent = cloudContent.filter((item) => item.type === activeCategory);
+    let baseContent = cloudContent.filter((item) => item.type === activeCategory);
 
     if (activeCategory === 'tv') {
       const dynamicFolderChannels: any[] = [];
-      channelFolders.forEach(folder => {
+      tvlibreChannels.forEach(folder => {
         folder.options.forEach((opt: any, i: number) => {
           dynamicFolderChannels.push({
             id: `${folder.id}-opt-${i}`,
@@ -382,8 +386,28 @@ export default function TvLiveScreen({ category: propCategory, route }: any) {
       return [...baseContent, ...dynamicFolderChannels];
     }
 
+    // Aplicar filtros de la barra superior para peliculas, series y anime
+    if (activeFilter === 'Estrenos') {
+      baseContent = [...baseContent].sort((a, b) => (parseInt(b.year) || 0) - (parseInt(a.year) || 0));
+    } else if (activeFilter === 'Mejores Valoradas') {
+      baseContent = [...baseContent].sort((a, b) => {
+        const ratingA = parseFloat(a.imdbRating || a.rating || '0') || 0;
+        const ratingB = parseFloat(b.imdbRating || b.rating || '0') || 0;
+        return ratingB - ratingA;
+      });
+    } else if (activeFilter !== 'Todos') {
+      // Filtrar por string parcial en géneros
+      baseContent = baseContent.filter(item => {
+        const filterLower = activeFilter.toLowerCase();
+        if (item.genres && Array.isArray(item.genres)) {
+           return item.genres.some(g => g.toLowerCase().includes(filterLower));
+        }
+        return item.genre && item.genre.toLowerCase().includes(filterLower);
+      });
+    }
+
     return baseContent;
-  }, [cloudContent, channelFolders, activeCategory]);
+  }, [cloudContent, tvlibreChannels, activeCategory, activeFilter]);
 
   const heroItems = useMemo(() => filteredContent.slice(0, 5), [filteredContent]);
 
@@ -454,6 +478,37 @@ export default function TvLiveScreen({ category: propCategory, route }: any) {
     anime: 'Anime',
   };
 
+  // Botón CARGAR MÁS al final de la grilla
+  const LoadMoreFooter = () => (
+    <View style={{ width: '100%', alignItems: 'center', paddingVertical: 24 }}>
+      <TvFocusable
+        onPress={() => fetchMoreContent()}
+        scaleTo={1.05}
+        borderWidth={0}
+        style={{ borderRadius: 14 }}
+      >
+        {(focused: boolean) => (
+          <View style={{
+            paddingHorizontal: 48, paddingVertical: 18, borderRadius: 14,
+            backgroundColor: focused ? '#B026FF' : 'rgba(176,38,255,0.1)',
+            borderWidth: 2, borderColor: focused ? '#fff' : '#B026FF',
+            flexDirection: 'row', alignItems: 'center',
+          }}>
+            {isLoadingContent ? (
+              <Text style={{ color: '#B026FF', fontWeight: '900', fontSize: 16, letterSpacing: 2 }}>
+                CARGANDO...
+              </Text>
+            ) : (
+              <Text style={{ color: focused ? '#fff' : '#B026FF', fontWeight: '900', fontSize: 16, letterSpacing: 2 }}>
+                CARGAR MÁS
+              </Text>
+            )}
+          </View>
+        )}
+      </TvFocusable>
+    </View>
+  );
+
   return (
     <View style={{ flex: 1, backgroundColor: '#050505' }}>
       {/* 🔮 Fondo premium */}
@@ -475,7 +530,7 @@ export default function TvLiveScreen({ category: propCategory, route }: any) {
           ref={flatListRef}
           key={`${activeCategory}-5cols`}
           data={filteredContent}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item, index) => `${item.id}-${index}`}
           numColumns={5}
           showsVerticalScrollIndicator={false}
           onScroll={handleScroll}
@@ -513,6 +568,49 @@ export default function TvLiveScreen({ category: propCategory, route }: any) {
                   {categoryLabel[activeCategory] || 'Explorar'}
                 </Text>
               </View>
+
+              {/* Barra de Filtros interactiva (Style Neon) */}
+              {activeCategory !== 'tv' && (
+                <View style={{ marginBottom: 24 }}>
+                  <FlatList
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    data={availableFilters}
+                    keyExtractor={(item, index) => `filter-${item}-${index}`}
+                    renderItem={({ item }) => {
+                      const isActive = activeFilter === item;
+                      return (
+                        <TvFocusable
+                          onPress={() => setActiveFilter(item)}
+                          borderWidth={0}
+                          scaleTo={1.05}
+                          style={{ borderRadius: 20, marginRight: 16 }}
+                          focusedStyle={{ backgroundColor: 'transparent' }}
+                        >
+                          {(focused) => (
+                            <View style={{
+                              paddingHorizontal: 24, paddingVertical: 12,
+                              borderRadius: 20,
+                              backgroundColor: isActive ? '#fff' : (focused ? '#333' : 'rgba(255,255,255,0.05)'),
+                              borderWidth: focused ? 2 : 1,
+                              borderColor: focused ? '#B026FF' : (isActive ? '#fff' : 'rgba(255,255,255,0.1)'),
+                              shadowColor: focused ? '#B026FF' : 'transparent',
+                              shadowOpacity: focused ? 0.4 : 0, shadowRadius: 10, elevation: focused ? 10 : 0
+                            }}>
+                              <Text style={{
+                                color: isActive ? '#000' : '#fff',
+                                fontWeight: '800', fontSize: 16, letterSpacing: 1
+                              }}>
+                                {item.toUpperCase()}
+                              </Text>
+                            </View>
+                          )}
+                        </TvFocusable>
+                      );
+                    }}
+                  />
+                </View>
+              )}
 
               {/* Hero Carousel */}
               {activeHeroItem ? (
@@ -585,6 +683,7 @@ export default function TvLiveScreen({ category: propCategory, route }: any) {
               ) : <View style={{ marginTop: 16 }} />}
             </View>
           }
+          ListFooterComponent={filteredContent.length >= 20 ? <LoadMoreFooter /> : null}
           renderItem={({ item }) => (
             <TvMovieCard item={item} width={Math.floor(CARD_WIDTH)} height={Math.floor(CARD_WIDTH * 1.45)} onPress={() => navigation.navigate('DetailTV', { item })} />
           )}

@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, Image, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import TvFocusable from './TvFocusable';
 
 interface TvSportsEventCardProps {
@@ -64,7 +65,7 @@ export default function TvSportsEventCard({ event, onPress, onFocusItem }: TvSpo
             {/* Team 1 */}
             <View style={styles.teamRow}>
               {event.logo1 ? (
-                <Image source={{ uri: event.logo1 }} style={styles.teamLogo} resizeMode="contain" />
+                <Image source={{ uri: event.logo1 }} style={styles.teamLogo} contentFit="contain" />
               ) : (
                 <View style={[styles.teamLogoFallback, { backgroundColor: ACCENT_DIM }]}>
                   <Text style={[styles.teamInitials, { color: ACCENT }]}>
@@ -87,7 +88,7 @@ export default function TvSportsEventCard({ event, onPress, onFocusItem }: TvSpo
             {/* Team 2 */}
             <View style={styles.teamRow}>
               {event.logo2 ? (
-                <Image source={{ uri: event.logo2 }} style={styles.teamLogo} resizeMode="contain" />
+                <Image source={{ uri: event.logo2 }} style={styles.teamLogo} contentFit="contain" />
               ) : (
                 <View style={[styles.teamLogoFallback, { backgroundColor: ACCENT_DIM }]}>
                   <Text style={[styles.teamInitials, { color: ACCENT }]}>

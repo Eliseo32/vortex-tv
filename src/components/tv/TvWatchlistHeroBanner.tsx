@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import { PlayCircle, Clock } from 'lucide-react-native';
 import TvFocusable from './TvFocusable';
 
@@ -39,7 +40,8 @@ export default function TvWatchlistHeroBanner({
             <Image
               source={{ uri: item.backdrop || item.poster }}
               style={styles.backdrop}
-              resizeMode="cover"
+              contentFit="cover"
+              transition={200}
             />
             
             {/* 2. Capa de oscurecimiento cinematográfico (OLED Black) */}

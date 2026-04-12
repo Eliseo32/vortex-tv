@@ -35,7 +35,9 @@
         }
       ],
       "package": "com.safft.shagoo",
-      "permissions": []
+      "permissions": [],
+      "usesCleartextTraffic": true,
+      "blockedPermissions": []
     },
     "web": {
       "favicon": "./assets/favicon.png"

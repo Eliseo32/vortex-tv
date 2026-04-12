@@ -20,7 +20,7 @@ const DEFAULT_AVATARS = [
 ];
 
 export default function TvUserProfileScreen({ currentTab }: any) {
-  const { userAvatar, setUserAvatar, currentProfile, watchHistory, logout } = useAppStore();
+  const { currentProfile, userId, updateProfile, watchHistory, logout } = useAppStore();
   const [hovered, setHovered] = useState<string | null>(null);
   const [avatars, setAvatars] = useState<string[]>(DEFAULT_AVATARS);
   const [loading, setLoading] = useState(true);
@@ -46,6 +46,7 @@ export default function TvUserProfileScreen({ currentTab }: any) {
     return () => { mounted = false; };
   }, []);
 
+  const userAvatar = currentProfile?.avatar || null;
   const displayAvatar = hovered ?? userAvatar ?? avatars[0];
   const moviesWatched = watchHistory.filter(h => h.item?.type === 'movie').length;
 
@@ -111,7 +112,11 @@ export default function TvUserProfileScreen({ currentTab }: any) {
               const active = userAvatar === item;
               return (
                 <TvFocusable
-                  onPress={() => setUserAvatar(item)}
+                  onPress={() => {
+                    if (userId && currentProfile) {
+                      updateProfile(userId, currentProfile.id, { avatar: item });
+                    }
+                  }}
                   onFocus={() => setHovered(item)}
                   onBlur={() => setHovered(null)}
                   borderWidth={0}
