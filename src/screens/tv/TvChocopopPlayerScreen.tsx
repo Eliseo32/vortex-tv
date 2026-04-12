@@ -147,7 +147,11 @@ export default function TvChocopopPlayerScreen() {
             focused && { borderColor: 'rgba(255,255,255,0.4)', backgroundColor: '#1c1c24' },
           ]}>
             {item.poster ? (
-              <Image source={{ uri: item.poster }} style={styles.channelPoster} contentFit="contain" />
+              <Image
+                source={{ uri: item.poster, headers: { Referer: 'http://tv.chocopopflow.com/' } }}
+                style={styles.channelPoster}
+                contentFit="contain"
+              />
             ) : (
               <View style={[styles.channelPlaceholder, { backgroundColor: `${accent}22` }]}>
                 <Text style={[styles.channelInitials, { color: accent }]}>{getInitials(item.name)}</Text>

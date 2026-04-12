@@ -111,12 +111,13 @@ const CHANNEL_LOGOS: Record<string, string> = {
 };
 
 /** Dado un canal del scraper, retorna la URL de logo más apropiada.
- * Prioridad: logos Wikipedia (conocidos, siempre disponibles) > poster del scraper
+ * Prioridad: poster del scraper (bestleague.world + Referer) > logos Wikipedia
  */
 function resolveChannelLogo(channel: { m3u8?: string | null; name?: string | null; poster?: string | null }): string | null {
-  // 1. Buscar por ID (m3u8) — Wikipedia logos son los más confiables en Android TV
+  // 1. Poster del scraper — tiene logo oficial del canal
+  if (channel.poster && channel.poster.startsWith('http')) return channel.poster;
+  // 2. Buscar por ID (m3u8) — logos Wikipedia como fallback
   if (channel.m3u8 && CHANNEL_LOGOS[channel.m3u8]) return CHANNEL_LOGOS[channel.m3u8];
-  // 2. Buscar por fragmento de nombre
   if (channel.name) {
     const nameL = channel.name.toLowerCase();
     const nameMap: Record<string, string> = {

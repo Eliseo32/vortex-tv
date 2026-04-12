@@ -19,6 +19,9 @@ import { ChocopopService, ChocopopChannel } from '../../services/ChocopopService
 
 const { width: windowWidth } = Dimensions.get('window');
 
+// Cabecera necesaria para que bestleague.world sirva las imágenes
+const POSTER_HEADERS = { Referer: 'http://tv.chocopopflow.com/' };
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function getInitials(name: string): string {
   return name.split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase();
@@ -99,9 +102,10 @@ export default function TvLiveSectionBanner({ onOpenLiveTab }: TvLiveSectionBann
             <View style={styles.cardImageWrap}>
               {item.poster ? (
                 <Image
-                  source={{ uri: item.poster }}
+                  source={{ uri: item.poster, headers: POSTER_HEADERS }}
                   style={styles.cardImage}
                   contentFit="cover"
+                  onError={() => { /* expo-image muestra nada si falla — el placeholder queda debajo */ }}
                 />
               ) : (
                 <View style={[styles.cardPlaceholder, { backgroundColor: `${accent}15` }]}>
