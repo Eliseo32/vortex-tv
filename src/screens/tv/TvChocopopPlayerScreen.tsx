@@ -1,8 +1,9 @@
 /**
  * TvChocopopPlayerScreen.tsx
- * Reproductor HLS para canales de ChocoPop — usa expo-av (compatible con Expo)
+ * Reproductor HLS para canales de ChocoPop — usa react-native-video
+ * (compatible con Expo builds — HLS nativo en Android TV)
  *
- * - expo-av Video reproduciendo .m3u8 directamente
+ * - react-native-video reproduciendo .m3u8 directamente via ExoPlayer
  * - Carrusel de canales en la parte inferior con D-pad
  * - Estado de carga / error / auto-retry
  * - Badge EN VIVO pulsante con botón atrás
@@ -13,7 +14,7 @@ import {
   View, Text, FlatList, BackHandler,
   StyleSheet, Animated, Dimensions, ActivityIndicator,
 } from 'react-native';
-import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
+import Video from 'react-native-video';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { ArrowLeft, Radio, RefreshCw, WifiOff, Maximize2, Minimize2 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -50,7 +51,6 @@ export default function TvChocopopPlayerScreen() {
   const [hasError, setHasError] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const videoRef = useRef<Video>(null);
 
   // Animaciones
   const pulsAnim = useRef(new Animated.Value(1)).current;
@@ -64,8 +64,6 @@ export default function TvChocopopPlayerScreen() {
       ]).start(() => pulse());
     pulse();
   }, []);
-
-
 
   // ── Fetch canales ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -98,28 +96,22 @@ export default function TvChocopopPlayerScreen() {
   }, [current]);
 
   // ── Handlers del player ──────────────────────────────────────────────────────
-  const handlePlaybackUpdate = useCallback((status: AVPlaybackStatus) => {
-    if (!status.isLoaded) {
-      if ((status as any).error) {
-        setHasError(true);
-        setIsLoading(false);
-      }
-      return;
-    }
-    if (status.isPlaying || status.isBuffering === false) {
-      setIsLoading(false);
-    }
-  }, []);
-
   const handleLoad = useCallback(() => {
     setIsLoading(false);
     setHasError(false);
   }, []);
 
-  const handleError = useCallback(() => {
+  const handleError = useCallback((e: any) => {
+    console.warn('[ChocopopPlayer] Error reproduciendo:', e?.error?.localizedDescription || e);
     setHasError(true);
     setIsLoading(false);
   }, []);
+
+  const handleBuffer = useCallback(({ isBuffering }: { isBuffering: boolean }) => {
+    if (!isBuffering && isLoading) {
+      setIsLoading(false);
+    }
+  }, [isLoading]);
 
   const retry = useCallback(() => {
     setHasError(false);
@@ -188,20 +180,27 @@ export default function TvChocopopPlayerScreen() {
       {/* ── VIDEO PLAYER ────────────────────────────────────────── */}
       <View style={[styles.playerContainer, isFullscreen && { height: H }]}>
 
-        {/* expo-av Video — soporta HLS .m3u8 en Android TV */}
+        {/* react-native-video — HLS nativo con ExoPlayer en Android */}
         {!hasError && (
           <Video
             key={`${current.m3u8}-${retryKey}`}
-            ref={videoRef}
             source={{ uri: current.url }}
             style={StyleSheet.absoluteFillObject}
-            resizeMode={ResizeMode.CONTAIN}
-            shouldPlay
-            isLooping={false}
+            resizeMode="contain"
+            paused={false}
+            repeat={false}
             volume={1.0}
             onLoad={handleLoad}
             onError={handleError}
-            onPlaybackStatusUpdate={handlePlaybackUpdate}
+            onBuffer={handleBuffer}
+            // HLS specific
+            minLoadRetryCount={3}
+            bufferConfig={{
+              minBufferMs: 5000,
+              maxBufferMs: 30000,
+              bufferForPlaybackMs: 2500,
+              bufferForPlaybackAfterRebufferMs: 5000,
+            }}
           />
         )}
 
@@ -278,31 +277,21 @@ export default function TvChocopopPlayerScreen() {
           </TvFocusable>
         </Animated.View>
         )}
-
-        {/* Nombre del canal en esquina inferior */}
-        <View style={styles.channelTitle} pointerEvents="none">
-          <Text style={styles.channelTitleText}>{current.name}</Text>
-        </View>
       </View>
 
-      {/* ── CARRUSEL DE CANALES (se oculta en fullscreen) ────────── */}
+      {/* ── CARRUSEL DE CANALES ──────────────────────────────────── */}
       {!isFullscreen && (
-        <View style={styles.carouselContainer}>
-          <View style={styles.carouselHeader}>
-            <Animated.View style={[styles.carouselDot, { opacity: pulsAnim }]} />
-            <Text style={styles.carouselTitle}>CANALES EN VIVO</Text>
-          <Text style={styles.carouselCount}>{channels.length} canales</Text>
-        </View>
-        <FlatList
-          data={channels}
-          keyExtractor={keyExtractor}
-          renderItem={renderChannel}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 8 }}
-          initialNumToRender={8}
-          maxToRenderPerBatch={5}
-          windowSize={5}
+        <View style={styles.carousel}>
+          <FlatList
+            data={channels}
+            keyExtractor={keyExtractor}
+            renderItem={renderChannel}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: 24, paddingVertical: 12 }}
+            initialNumToRender={8}
+            maxToRenderPerBatch={6}
+            windowSize={5}
           />
         </View>
       )}
@@ -312,108 +301,204 @@ export default function TvChocopopPlayerScreen() {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#000' },
-
+  root: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
   centerScreen: {
-    flex: 1, backgroundColor: '#050505',
-    alignItems: 'center', justifyContent: 'center', gap: 16,
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#000',
+    gap: 16,
   },
-  loadingText: { color: '#9CA3AF', fontSize: 15, fontWeight: '700' },
+  loadingText: {
+    color: LIVE_ACCENT,
+    fontSize: 16,
+    fontWeight: '700',
+  },
 
-  // Player
   playerContainer: {
-    height: H - CAROUSEL_H,
-    width: '100%',
-    backgroundColor: '#050505',
-    overflow: 'hidden',
+    flex: 1,
+    backgroundColor: '#000',
+    position: 'relative',
   },
-  gradient: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 120 },
 
   // Overlays
   overlayCenter: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#050505',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 12,
     zIndex: 10,
   },
-  overlayTitle: { color: '#fff', fontSize: 22, fontWeight: '900', marginTop: 16, textAlign: 'center', maxWidth: '70%' },
-  errorSub: { color: '#9CA3AF', fontSize: 13, marginTop: 8 },
-  liveRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
-  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: LIVE_ACCENT },
-  liveRowText: { color: LIVE_ACCENT, fontSize: 11, fontWeight: '900', letterSpacing: 2 },
+  overlayTitle: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '900',
+    letterSpacing: -0.5,
+    textAlign: 'center',
+    paddingHorizontal: 32,
+  },
+  errorSub: {
+    color: '#6B7280',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  liveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  liveRowText: {
+    color: LIVE_ACCENT,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 2,
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: LIVE_ACCENT,
+  },
+  liveDotSmall: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: LIVE_ACCENT,
+  },
 
   retryBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 24, paddingVertical: 12, borderRadius: 10,
-    backgroundColor: 'rgba(191,64,191,0.12)',
-    borderWidth: 1, borderColor: 'rgba(191,64,191,0.4)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: LIVE_ACCENT,
+    backgroundColor: 'rgba(191,64,191,0.1)',
   },
-  retryBtnFocused: { backgroundColor: LIVE_ACCENT, borderColor: LIVE_ACCENT },
-  retryText: { color: LIVE_ACCENT, fontSize: 14, fontWeight: '800' },
+  retryBtnFocused: {
+    backgroundColor: LIVE_ACCENT,
+    borderColor: LIVE_ACCENT,
+  },
+  retryText: {
+    color: LIVE_ACCENT,
+    fontSize: 14,
+    fontWeight: '800',
+  },
 
-  // Badge
+  gradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 120,
+    zIndex: 1,
+  },
+
+  // Badge flotante
   badge: {
-    position: 'absolute', top: 16, left: 16, zIndex: 200,
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: 'rgba(0,0,0,0.72)',
-    borderRadius: 50, paddingHorizontal: 10, paddingVertical: 8,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
-    alignSelf: 'flex-start',
+    position: 'absolute',
+    top: 20,
+    left: 24,
+    right: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    zIndex: 20,
   },
   badgeBtn: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center', justifyContent: 'center',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  badgeBtnFocused: { backgroundColor: '#fff', borderColor: '#fff' },
-  badgeInfo: { gap: 2, maxWidth: 200 },
-  liveDotSmall: { width: 6, height: 6, borderRadius: 3, backgroundColor: LIVE_ACCENT },
-  badgeLiveText: { color: LIVE_ACCENT, fontSize: 9, fontWeight: '900', letterSpacing: 2 },
-  badgeTitle: { color: '#fff', fontSize: 14, fontWeight: '800' },
-
-  channelTitle: { position: 'absolute', bottom: 12, left: 20 },
-  channelTitleText: { color: 'rgba(255,255,255,0.45)', fontSize: 13, fontWeight: '700' },
+  badgeBtnFocused: {
+    backgroundColor: '#fff',
+    borderColor: '#fff',
+  },
+  badgeInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  badgeLiveText: {
+    color: LIVE_ACCENT,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 2,
+  },
+  badgeTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: -0.5,
+  },
 
   // Carrusel
-  carouselContainer: {
+  carousel: {
     height: CAROUSEL_H,
-    backgroundColor: '#0a0a0d',
+    backgroundColor: 'rgba(0,0,0,0.85)',
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.06)',
   },
-  carouselHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingHorizontal: 20, paddingTop: 14, paddingBottom: 10,
-  },
-  carouselDot: { width: 3, height: 16, backgroundColor: LIVE_ACCENT, borderRadius: 2 },
-  carouselTitle: { color: '#f0f0fd', fontSize: 13, fontWeight: '900', letterSpacing: 1.5, flex: 1 },
-  carouselCount: { color: '#4B5563', fontSize: 11, fontWeight: '700' },
-
-  // Canal card
   channelCard: {
-    width: CHANNEL_THUMB_W, height: CHANNEL_THUMB_H,
-    borderRadius: 12, overflow: 'hidden',
-    backgroundColor: '#111115',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.08)',
+    width: CHANNEL_THUMB_W,
+    height: CHANNEL_THUMB_H,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#111118',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.07)',
     position: 'relative',
   },
-  channelPoster: { width: '100%', height: '75%' },
+  channelPoster: {
+    width: '100%',
+    height: '75%',
+    backgroundColor: '#0a0a0a',
+  },
   channelPlaceholder: {
-    width: '100%', height: '75%',
-    alignItems: 'center', justifyContent: 'center',
+    width: '100%',
+    height: '75%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  channelInitials: { fontSize: 20, fontWeight: '900' },
-  activeBadge: {
-    position: 'absolute', top: 6, right: 6,
-    width: 12, height: 12, borderRadius: 6,
-    alignItems: 'center', justifyContent: 'center',
+  channelInitials: {
+    fontSize: 20,
+    fontWeight: '900',
   },
-  activeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#fff' },
-  channelNameWrap: { flex: 1, paddingHorizontal: 6, paddingVertical: 4, justifyContent: 'center' },
+  channelNameWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
   channelName: {
-    color: '#9CA3AF', fontSize: 10, fontWeight: '700',
-    textAlign: 'center', letterSpacing: 0.3,
+    color: '#9CA3AF',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+    textAlign: 'center',
+  },
+  activeBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#fff',
   },
 });
