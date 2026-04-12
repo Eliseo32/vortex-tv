@@ -93,37 +93,75 @@ async function fetchChocopopHTML() {
     }
 }
 
+// ─── Sanitiza un string JS array para que sea JSON válido ────────────────────
+function sanitizeJsArray(raw) {
+    return raw
+        .replace(/\/\/[^\n]*/g, '')          // quita comentarios //
+        .replace(/\/\*[\s\S]*?\*\//g, '')    // quita comentarios /* */
+        .replace(/,\s*([\]}])/g, '$1')       // quita trailing commas
+        .trim();
+}
+
 // ─── Extrae var Streams del HTML ─────────────────────────────────────────────
 function extractStreams(html) {
-    // Patrón principal: var Streams = [...]
-    const match = html.match(/var\s+Streams\s*=\s*(\[[\s\S]*?\]);/);
-    if (match && match[1]) {
+    const patterns = [
+        /var\s+Streams\s*=\s*(\[[\s\S]*?\])\s*;/,
+        /Streams\s*=\s*(\[[\s\S]*?\])\s*;/,
+        /var\s+Streams\s*=\s*(\[[\s\S]*?\])/,
+        /Streams\s*=\s*(\[[\s\S]*?\])/,
+    ];
+
+    for (const pattern of patterns) {
+        const match = html.match(pattern);
+        if (!match?.[1]) continue;
+
+        const rawBlock = match[1];
+        console.log(`🔍 Bloque capturado (inicio): ${rawBlock.slice(0, 150).replace(/\n/g, ' ')}`);
+
+        // Intento 1: JSON.parse directo
         try {
-            const parsed = JSON.parse(match[1]);
+            const parsed = JSON.parse(rawBlock);
             if (Array.isArray(parsed) && parsed.length > 0) {
-                console.log(`✅ Encontrados ${parsed.length} canales en var Streams`);
+                console.log(`✅ Parseado con JSON.parse: ${parsed.length} canales`);
                 return parsed;
             }
+        } catch (_) {}
+
+        // Intento 2: sanitizar trailing commas y reintentar
+        try {
+            const sanitized = sanitizeJsArray(rawBlock);
+            const parsed = JSON.parse(sanitized);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                console.log(`✅ Parseado tras sanitizar: ${parsed.length} canales`);
+                return parsed;
+            }
+        } catch (_) {}
+
+        // Intento 3: Function eval (seguro en Node server-side)
+        try {
+            const result = new Function(`"use strict"; return (${rawBlock})`)();
+            if (Array.isArray(result) && result.length > 0) {
+                console.log(`✅ Parseado con Function eval: ${result.length} canales`);
+                return result;
+            }
         } catch (e) {
-            console.warn('⚠️  Error parseando Streams JSON:', e.message);
+            console.warn(`⚠️  Function eval falló: ${e.message.slice(0, 80)}`);
         }
     }
 
-    // Patrón alternativo: Streams = [...]
-    const match2 = html.match(/Streams\s*=\s*(\[[\s\S]*?\]);/);
-    if (match2 && match2[1]) {
-        try {
-            const parsed = JSON.parse(match2[1]);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-                console.log(`✅ Encontrados ${parsed.length} canales (patrón alternativo)`);
-                return parsed;
+    // Intento final: extraer objetos individuales con regex
+    try {
+        const objMatches = [...html.matchAll(/\{[^{}]*"name"\s*:\s*"[^"]+?"[^{}]*"url"\s*:\s*"[^"]+?"[^{}]*\}/g)];
+        if (objMatches.length > 0) {
+            const channels = objMatches.map(m => { try { return JSON.parse(m[0]); } catch { return null; } }).filter(Boolean);
+            if (channels.length > 0) {
+                console.log(`✅ Extraídos ${channels.length} canales por regex individual`);
+                return channels;
             }
-        } catch (e) {
-            console.warn('⚠️  Error en patrón alternativo:', e.message);
         }
-    }
+    } catch (_) {}
 
-    console.error('❌ No se encontró var Streams en el HTML');
+    console.error('❌ No se pudo parsear var Streams con ningún método');
     return null;
 }
 
