@@ -1,12 +1,13 @@
 /**
  * TvChocopopPlayerScreen.tsx
- * Reproductor HLS para canales de ChocoPop — usa react-native-video
- * (compatible con Expo builds — HLS nativo en Android TV)
+ * Reproductor HLS para canales de ChocoPop
  *
- * - react-native-video reproduciendo .m3u8 directamente via ExoPlayer
- * - Carrusel de canales en la parte inferior con D-pad
- * - Estado de carga / error / auto-retry
- * - Badge EN VIVO pulsante con botón atrás
+ * Detección automática del entorno:
+ * - Expo Go         → usa expo-av (único player disponible sin native modules)
+ * - Production/Dev  → usa react-native-video (ExoPlayer, HLS nativo)
+ *
+ * La forma correcta de testear en desarrollo es con `expo-dev-client`:
+ *   eas build --profile development --platform android
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -14,11 +15,11 @@ import {
   View, Text, FlatList, BackHandler,
   StyleSheet, Animated, Dimensions, ActivityIndicator,
 } from 'react-native';
-import Video from 'react-native-video';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { ArrowLeft, Radio, RefreshCw, WifiOff, Maximize2, Minimize2 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
+import Constants from 'expo-constants';
 import TvFocusable from '../../components/tv/TvFocusable';
 import { ChocopopService, ChocopopChannel } from '../../services/ChocopopService';
 
@@ -27,6 +28,10 @@ const CHANNEL_THUMB_W = 140;
 const CHANNEL_THUMB_H = 90;
 const CAROUSEL_H = 165;
 const LIVE_ACCENT = '#BF40BF';
+
+// ─── Detección de entorno ─────────────────────────────────────────────────────
+// En Expo Go no existen módulos nativos de terceros (react-native-video)
+const IS_EXPO_GO = Constants.appOwnership === 'expo';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function getInitials(name: string): string {
@@ -39,7 +44,65 @@ function getAccent(name: string): string {
   return ACCENT_COLORS[h % ACCENT_COLORS.length];
 }
 
-// ─── Componente ───────────────────────────────────────────────────────────────
+// ─── Video Player agnóstico ───────────────────────────────────────────────────
+// Usa react-native-video en builds, expo-av en Expo Go
+function UniversalVideo({
+  uri,
+  onLoad,
+  onError,
+  onBuffer,
+}: {
+  uri: string;
+  onLoad: () => void;
+  onError: (e?: any) => void;
+  onBuffer?: (e: { isBuffering: boolean }) => void;
+}) {
+  if (IS_EXPO_GO) {
+    // expo-av — disponible en Expo Go
+    const { Video: AvVideo, ResizeMode, AVPlaybackStatus } = require('expo-av');
+    return (
+      <AvVideo
+        source={{ uri }}
+        style={StyleSheet.absoluteFillObject}
+        resizeMode={ResizeMode.CONTAIN}
+        shouldPlay
+        isLooping={false}
+        volume={1.0}
+        onLoad={onLoad}
+        onError={onError}
+        onPlaybackStatusUpdate={(status: any) => {
+          if (!status.isLoaded && status.error) onError();
+          if (status.isPlaying && onBuffer) onBuffer({ isBuffering: false });
+        }}
+      />
+    );
+  }
+
+  // react-native-video — disponible en builds con módulos nativos
+  const RNVideo = require('react-native-video').default;
+  return (
+    <RNVideo
+      source={{ uri }}
+      style={StyleSheet.absoluteFillObject}
+      resizeMode="contain"
+      paused={false}
+      repeat={false}
+      volume={1.0}
+      onLoad={onLoad}
+      onError={onError}
+      onBuffer={onBuffer}
+      minLoadRetryCount={3}
+      bufferConfig={{
+        minBufferMs: 5000,
+        maxBufferMs: 30000,
+        bufferForPlaybackMs: 2500,
+        bufferForPlaybackAfterRebufferMs: 5000,
+      }}
+    />
+  );
+}
+
+// ─── Componente Principal ─────────────────────────────────────────────────────
 export default function TvChocopopPlayerScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
@@ -52,7 +115,6 @@ export default function TvChocopopPlayerScreen() {
   const [retryKey, setRetryKey] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Animaciones
   const pulsAnim = useRef(new Animated.Value(1)).current;
 
   // ── Pulse loop ───────────────────────────────────────────────────────────────
@@ -95,23 +157,20 @@ export default function TvChocopopPlayerScreen() {
     setRetryKey((k) => k + 1);
   }, [current]);
 
-  // ── Handlers del player ──────────────────────────────────────────────────────
   const handleLoad = useCallback(() => {
     setIsLoading(false);
     setHasError(false);
   }, []);
 
-  const handleError = useCallback((e: any) => {
-    console.warn('[ChocopopPlayer] Error reproduciendo:', e?.error?.localizedDescription || e);
+  const handleError = useCallback((e?: any) => {
+    console.warn('[ChocopopPlayer] Error:', e?.error?.localizedDescription || e);
     setHasError(true);
     setIsLoading(false);
   }, []);
 
   const handleBuffer = useCallback(({ isBuffering }: { isBuffering: boolean }) => {
-    if (!isBuffering && isLoading) {
-      setIsLoading(false);
-    }
-  }, [isLoading]);
+    if (!isBuffering) setIsLoading(false);
+  }, []);
 
   const retry = useCallback(() => {
     setHasError(false);
@@ -165,7 +224,6 @@ export default function TvChocopopPlayerScreen() {
     );
   }, [current, selectChannel, pulsAnim]);
 
-  // ── Cargando inicial ─────────────────────────────────────────────────────────
   if (!current) {
     return (
       <View style={styles.centerScreen}>
@@ -180,27 +238,13 @@ export default function TvChocopopPlayerScreen() {
       {/* ── VIDEO PLAYER ────────────────────────────────────────── */}
       <View style={[styles.playerContainer, isFullscreen && { height: H }]}>
 
-        {/* react-native-video — HLS nativo con ExoPlayer en Android */}
         {!hasError && (
-          <Video
+          <UniversalVideo
             key={`${current.m3u8}-${retryKey}`}
-            source={{ uri: current.url }}
-            style={StyleSheet.absoluteFillObject}
-            resizeMode="contain"
-            paused={false}
-            repeat={false}
-            volume={1.0}
+            uri={current.url}
             onLoad={handleLoad}
             onError={handleError}
             onBuffer={handleBuffer}
-            // HLS specific
-            minLoadRetryCount={3}
-            bufferConfig={{
-              minBufferMs: 5000,
-              maxBufferMs: 30000,
-              bufferForPlaybackMs: 2500,
-              bufferForPlaybackAfterRebufferMs: 5000,
-            }}
           />
         )}
 
@@ -233,7 +277,6 @@ export default function TvChocopopPlayerScreen() {
           </View>
         )}
 
-        {/* Gradiente inferior */}
         <LinearGradient
           colors={['transparent', 'rgba(0,0,0,0.85)']}
           start={{ x: 0, y: 0.4 }}
@@ -244,38 +287,38 @@ export default function TvChocopopPlayerScreen() {
 
         {/* Badge flotante */}
         {!isFullscreen && (
-          <Animated.View style={[styles.badge]} pointerEvents="box-none">
-          <TvFocusable onPress={() => navigation.goBack()} scaleTo={1.1} borderWidth={0} style={{ borderRadius: 50 }}>
-            {(f: boolean) => (
-              <View style={[styles.badgeBtn, f && styles.badgeBtnFocused]}>
-                <ArrowLeft color={f ? '#000' : '#fff'} size={20} />
+          <Animated.View style={styles.badge} pointerEvents="box-none">
+            <TvFocusable onPress={() => navigation.goBack()} scaleTo={1.1} borderWidth={0} style={{ borderRadius: 50 }}>
+              {(f: boolean) => (
+                <View style={[styles.badgeBtn, f && styles.badgeBtnFocused]}>
+                  <ArrowLeft color={f ? '#000' : '#fff'} size={20} />
+                </View>
+              )}
+            </TvFocusable>
+            <View style={styles.badgeInfo}>
+              <View style={styles.liveRow}>
+                <Animated.View style={[styles.liveDotSmall, { opacity: pulsAnim }]} />
+                <Text style={styles.badgeLiveText}>EN VIVO</Text>
               </View>
-            )}
-          </TvFocusable>
-          <View style={styles.badgeInfo}>
-            <View style={styles.liveRow}>
-              <Animated.View style={[styles.liveDotSmall, { opacity: pulsAnim }]} />
-              <Text style={styles.badgeLiveText}>EN VIVO</Text>
+              <Text numberOfLines={1} style={styles.badgeTitle}>{current.name}</Text>
             </View>
-            <Text numberOfLines={1} style={styles.badgeTitle}>{current.name}</Text>
-          </View>
-          <TvFocusable onPress={retry} scaleTo={1.1} borderWidth={0} style={{ borderRadius: 50 }}>
-            {(f: boolean) => (
-              <View style={[styles.badgeBtn, f && styles.badgeBtnFocused]}>
-                <RefreshCw color={f ? '#000' : '#B026FF'} size={16} />
-              </View>
-            )}
-          </TvFocusable>
-          <TvFocusable onPress={() => setIsFullscreen(v => !v)} scaleTo={1.1} borderWidth={0} style={{ borderRadius: 50 }}>
-            {(f: boolean) => (
-              <View style={[styles.badgeBtn, f && styles.badgeBtnFocused]}>
-                {isFullscreen
-                  ? <Minimize2 color={f ? '#000' : '#00e3fd'} size={16} />
-                  : <Maximize2 color={f ? '#000' : '#00e3fd'} size={16} />}
-              </View>
-            )}
-          </TvFocusable>
-        </Animated.View>
+            <TvFocusable onPress={retry} scaleTo={1.1} borderWidth={0} style={{ borderRadius: 50 }}>
+              {(f: boolean) => (
+                <View style={[styles.badgeBtn, f && styles.badgeBtnFocused]}>
+                  <RefreshCw color={f ? '#000' : '#B026FF'} size={16} />
+                </View>
+              )}
+            </TvFocusable>
+            <TvFocusable onPress={() => setIsFullscreen(v => !v)} scaleTo={1.1} borderWidth={0} style={{ borderRadius: 50 }}>
+              {(f: boolean) => (
+                <View style={[styles.badgeBtn, f && styles.badgeBtnFocused]}>
+                  {isFullscreen
+                    ? <Minimize2 color={f ? '#000' : '#00e3fd'} size={16} />
+                    : <Maximize2 color={f ? '#000' : '#00e3fd'} size={16} />}
+                </View>
+              )}
+            </TvFocusable>
+          </Animated.View>
         )}
       </View>
 
@@ -301,204 +344,69 @@ export default function TvChocopopPlayerScreen() {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
+  root: { flex: 1, backgroundColor: '#000' },
   centerScreen: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#000',
-    gap: 16,
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#000', gap: 16,
   },
-  loadingText: {
-    color: LIVE_ACCENT,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-
-  playerContainer: {
-    flex: 1,
-    backgroundColor: '#000',
-    position: 'relative',
-  },
-
-  // Overlays
+  loadingText: { color: LIVE_ACCENT, fontSize: 16, fontWeight: '700' },
+  playerContainer: { flex: 1, backgroundColor: '#000', position: 'relative' },
   overlayCenter: {
     ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    zIndex: 10,
+    alignItems: 'center', justifyContent: 'center', gap: 12, zIndex: 10,
   },
   overlayTitle: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-    textAlign: 'center',
-    paddingHorizontal: 32,
+    color: '#fff', fontSize: 24, fontWeight: '900', letterSpacing: -0.5,
+    textAlign: 'center', paddingHorizontal: 32,
   },
-  errorSub: {
-    color: '#6B7280',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  liveRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  liveRowText: {
-    color: LIVE_ACCENT,
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 2,
-  },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: LIVE_ACCENT,
-  },
-  liveDotSmall: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: LIVE_ACCENT,
-  },
-
+  errorSub: { color: '#6B7280', fontSize: 15, fontWeight: '600' },
+  liveRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  liveRowText: { color: LIVE_ACCENT, fontSize: 12, fontWeight: '900', letterSpacing: 2 },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: LIVE_ACCENT },
+  liveDotSmall: { width: 6, height: 6, borderRadius: 3, backgroundColor: LIVE_ACCENT },
   retryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 28,
-    paddingVertical: 14,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: LIVE_ACCENT,
-    backgroundColor: 'rgba(191,64,191,0.1)',
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 28, paddingVertical: 14, borderRadius: 10,
+    borderWidth: 1.5, borderColor: LIVE_ACCENT, backgroundColor: 'rgba(191,64,191,0.1)',
   },
-  retryBtnFocused: {
-    backgroundColor: LIVE_ACCENT,
-    borderColor: LIVE_ACCENT,
-  },
-  retryText: {
-    color: LIVE_ACCENT,
-    fontSize: 14,
-    fontWeight: '800',
-  },
-
+  retryBtnFocused: { backgroundColor: LIVE_ACCENT, borderColor: LIVE_ACCENT },
+  retryText: { color: LIVE_ACCENT, fontSize: 14, fontWeight: '800' },
   gradient: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 120,
-    zIndex: 1,
+    position: 'absolute', bottom: 0, left: 0, right: 0, height: 120, zIndex: 1,
   },
-
-  // Badge flotante
   badge: {
-    position: 'absolute',
-    top: 20,
-    left: 24,
-    right: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    zIndex: 20,
+    position: 'absolute', top: 20, left: 24, right: 24,
+    flexDirection: 'row', alignItems: 'center', gap: 12, zIndex: 20,
   },
   badgeBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 44, height: 44, borderRadius: 22,
     backgroundColor: 'rgba(0,0,0,0.6)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center', justifyContent: 'center',
   },
-  badgeBtnFocused: {
-    backgroundColor: '#fff',
-    borderColor: '#fff',
-  },
-  badgeInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  badgeLiveText: {
-    color: LIVE_ACCENT,
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 2,
-  },
-  badgeTitle: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-  },
-
-  // Carrusel
+  badgeBtnFocused: { backgroundColor: '#fff', borderColor: '#fff' },
+  badgeInfo: { flex: 1, gap: 2 },
+  badgeLiveText: { color: LIVE_ACCENT, fontSize: 10, fontWeight: '900', letterSpacing: 2 },
+  badgeTitle: { color: '#fff', fontSize: 18, fontWeight: '900', letterSpacing: -0.5 },
   carousel: {
-    height: CAROUSEL_H,
-    backgroundColor: 'rgba(0,0,0,0.85)',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.06)',
+    height: CAROUSEL_H, backgroundColor: 'rgba(0,0,0,0.85)',
+    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)',
   },
   channelCard: {
-    width: CHANNEL_THUMB_W,
-    height: CHANNEL_THUMB_H,
-    borderRadius: 12,
-    overflow: 'hidden',
-    backgroundColor: '#111118',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.07)',
-    position: 'relative',
+    width: CHANNEL_THUMB_W, height: CHANNEL_THUMB_H,
+    borderRadius: 12, overflow: 'hidden',
+    backgroundColor: '#111118', borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.07)', position: 'relative',
   },
-  channelPoster: {
-    width: '100%',
-    height: '75%',
-    backgroundColor: '#0a0a0a',
-  },
-  channelPlaceholder: {
-    width: '100%',
-    height: '75%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  channelInitials: {
-    fontSize: 20,
-    fontWeight: '900',
-  },
-  channelNameWrap: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-  },
-  channelName: {
-    color: '#9CA3AF',
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-    textAlign: 'center',
-  },
+  channelPoster: { width: '100%', height: '75%', backgroundColor: '#0a0a0a' },
+  channelPlaceholder: { width: '100%', height: '75%', alignItems: 'center', justifyContent: 'center' },
+  channelInitials: { fontSize: 20, fontWeight: '900' },
+  channelNameWrap: { flex: 1, justifyContent: 'center', paddingHorizontal: 8 },
+  channelName: { color: '#9CA3AF', fontSize: 10, fontWeight: '700', letterSpacing: 0.2, textAlign: 'center' },
   activeBadge: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
+    position: 'absolute', top: 4, right: 4,
+    width: 12, height: 12, borderRadius: 6,
+    alignItems: 'center', justifyContent: 'center',
   },
-  activeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#fff',
-  },
+  activeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#fff' },
 });
