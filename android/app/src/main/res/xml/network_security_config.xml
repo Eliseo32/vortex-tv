@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  network_security_config.xml
+  Permite tráfico HTTP para los streams de TV en vivo.
+  Los canales usan HTTP plano (no HTTPS) en IPs de relay.
+-->
+<network-security-config>
+    <!-- Permitir TODO el tráfico cleartext (HTTP) — necesario para streams HLS -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Dominio del relay de ChocoPop (IP directa) -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">201.217.246.42</domain>
+    </domain-config>
+
+    <!-- Sitio fuente de ChocoPop (para scraping) -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">tv.chocopopflow.com</domain>
+        <domain includeSubdomains="true">chocopopflow.com</domain>
+    </domain-config>
+</network-security-config>
