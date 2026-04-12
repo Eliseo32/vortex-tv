@@ -1,0 +1,43 @@
+name: 📺 Actualizar Canales ChocoPop TV
+
+on:
+  # Corre cada 6 horas (el token puede cambiar)
+  schedule:
+    - cron: '0 */6 * * *'
+
+  # Permite ejecutarlo manualmente desde GitHub → Actions
+  workflow_dispatch:
+
+jobs:
+  scrape-chocopopflow:
+    name: Scraping ChocoPop TV → Firestore
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: 🟢 Configurar Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: scripts/package.json
+
+      - name: 📦 Instalar dependencias del scraper
+        working-directory: scripts
+        run: npm install
+
+      - name: 🚀 Ejecutar scraper de ChocoPop TV
+        working-directory: scripts
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: node scrape-chocopopflow.js
+
+      - name: ✅ Resultado
+        if: success()
+        run: echo "ChocoPop TV actualizado correctamente para $(date +'%d/%m/%Y %H:%M UTC')"
+
+      - name: ❌ Error
+        if: failure()
+        run: echo "El scraper de ChocoPop TV falló. Verificá los logs de arriba."
