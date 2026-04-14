@@ -13,7 +13,7 @@ import {
   StyleSheet, Animated, Dimensions, ActivityIndicator, ScrollView,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { ArrowLeft, Radio, RefreshCw, WifiOff, Maximize2, Minimize2, Bug } from 'lucide-react-native';
+import { ArrowLeft, Radio, RefreshCw, WifiOff, Maximize2, Minimize2, Info } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import Constants from 'expo-constants';
