@@ -62,6 +62,29 @@ const AD_BLOCKER_BEFORE_LOAD = `
   window.alert = function(){ return true; };
   window.confirm = function(){ return true; };
   window.prompt = function(){ return ''; };
+
+  // ─ Hook JW Player: forzar autostart antes de que se inicialice ─
+  var _jw_raw = null;
+  Object.defineProperty(window, 'jwplayer', {
+    configurable: true,
+    enumerable:   true,
+    get: function(){ return _jw_raw; },
+    set: function(jwp){
+      _jw_raw = function(id){
+        var inst = jwp(id);
+        var _setup = inst.setup;
+        inst.setup = function(cfg){
+          cfg = cfg || {};
+          cfg.autostart = true;   // ← forzar autoplay
+          cfg.mute      = false;  // ← sin mute
+          return _setup.call(this, cfg);
+        };
+        return inst;
+      };
+      // Copiar propiedades estáticas de jwplayer
+      try{ Object.keys(jwp).forEach(function(k){ try{ _jw_raw[k]=jwp[k]; }catch(e){} }); }catch(e){}
+    }
+  });
 })(); true;
 `;
 
@@ -191,6 +214,18 @@ const SPORTS_AFTER_LOAD_JS = `
     if(v&&!v.paused&&v.currentTime>0.1) clearInterval(interval);
   },800);
 
+  // ─ Intervalo agresivo: llamar jwplayer().play() hasta que reproduzca ─
+  var _playTry = 0;
+  var _playLoop = setInterval(function(){
+    _playTry++;
+    if (_playTry > 60) { clearInterval(_playLoop); return; }
+    try{
+      var st = jwplayer().getState();
+      if (st === 'idle' || st === 'paused') { jwplayer().play(); }
+      if (st === 'playing' || st === 'buffering') { clearInterval(_playLoop); }
+    } catch(e){}
+  }, 1000);
+
   // ── Receptor de comandos desde React Native ───────────────────────────────
   function handleCommand(data){
     try{
@@ -311,6 +346,7 @@ function SportWebView({
       )}
 
       <WebView
+        focusable={false}
         ref={webViewRef as any}
         key={`wv-${currentServerIndex}-${retryNoReferer ? 'nr' : 'r'}`}
         source={source}
