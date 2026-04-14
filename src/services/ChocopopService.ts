@@ -247,26 +247,40 @@ async function fromScraping(): Promise<ChocopopChannel[] | null> {
 
     let raw: any[] | null = null;
 
-    // Intento 1: JSON.parse
-    try { raw = JSON.parse(rawBlock); } catch (_) {}
+    // Intento 1: JSON.parse directo
+    try {
+      raw = JSON.parse(rawBlock);
+      if (Array.isArray(raw) && raw.length > 0) {
+        console.log('[ChocopopService] ✅ JSON.parse directo OK');
+      }
+    } catch (e1) {
+      console.warn('[ChocopopService] JSON.parse directo failó:', String(e1).slice(0, 80));
+    }
 
-    // Intento 2: sanitizar trailing commas
-    if (!raw) {
+    // Intento 2: sanitizar trailing commas & comentarios JS (sin new Function - bloqueado en Hermes)
+    if (!raw || !Array.isArray(raw) || raw.length === 0) {
       try {
         const sanitized = rawBlock
-          .replace(/\/\/[^\n]*/g, '')
-          .replace(/,\s*([\]}])/g, '$1')
+          .replace(/\/\/[^\n]*/g, '')   // quita comentarios //
+          .replace(/\/\*[\s\S]*?\*\//g, '') // quita comentarios /* */
+          .replace(/,\s*([\]}])/g, '$1') // quita trailing commas
+          .replace(/([{,])\s*([a-zA-Z_$][\w$]*)\s*:/g, '$1"$2":') // keys sin quotes → con quotes
           .trim();
         raw = JSON.parse(sanitized);
-      } catch (_) {}
+        if (Array.isArray(raw) && raw.length > 0) {
+          console.log('[ChocopopService] ✅ JSON.parse sanitizado OK');
+        }
+      } catch (e2) {
+        console.warn('[ChocopopService] JSON.parse sanitizado falló:', String(e2).slice(0, 80));
+      }
     }
 
-    // Intento 3: Function eval
-    if (!raw) {
-      try { raw = new Function(`"use strict"; return (${rawBlock})`)() as any[]; } catch (_) {}
-    }
+    // Nota: new Function() está deshabilitado en Hermes (Android builds). NO usarlo.
 
-    if (!Array.isArray(raw) || raw.length === 0) return null;
+    if (!Array.isArray(raw) || raw.length === 0) {
+      console.error('[ChocopopService] ❌ No se pudo parsear var Streams. Bloque=', rawBlock?.slice(0, 200));
+      return null;
+    }
 
     const channels: ChocopopChannel[] = raw
       .filter((ch) => ch.name && ch.url)
@@ -279,7 +293,7 @@ async function fromScraping(): Promise<ChocopopChannel[] | null> {
         order: index,
       }));
 
-    console.log(`[ChocopopService] ✅ Scraped ${channels.length} canales desde el sitio`);
+    console.log(`[ChocopopService] ✅ Scraped ${channels.length} canales. Primera URL: ${channels[0]?.url}`);
     return channels;
   } catch (err) {
     console.warn('[ChocopopService] Error en scraping:', err);

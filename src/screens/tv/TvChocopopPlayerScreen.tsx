@@ -1,22 +1,19 @@
 /**
  * TvChocopopPlayerScreen.tsx
- * Reproductor HLS para canales de ChocoPop
+ * Reproductor HLS adaptativo:
+ * - Expo Go → expo-av (único player disponible sin native modules)
+ * - Build   → react-native-video con ExoPlayer (HLS nativo)
  *
- * Detección automática del entorno:
- * - Expo Go         → usa expo-av (único player disponible sin native modules)
- * - Production/Dev  → usa react-native-video (ExoPlayer, HLS nativo)
- *
- * La forma correcta de testear en desarrollo es con `expo-dev-client`:
- *   eas build --profile development --platform android
+ * DEBUG OVERLAY: muestra URL, fuente de datos y error en pantalla
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, FlatList, BackHandler,
-  StyleSheet, Animated, Dimensions, ActivityIndicator,
+  StyleSheet, Animated, Dimensions, ActivityIndicator, ScrollView,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { ArrowLeft, Radio, RefreshCw, WifiOff, Maximize2, Minimize2 } from 'lucide-react-native';
+import { ArrowLeft, Radio, RefreshCw, WifiOff, Maximize2, Minimize2, Bug } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import Constants from 'expo-constants';
@@ -24,14 +21,18 @@ import TvFocusable from '../../components/tv/TvFocusable';
 import { ChocopopService, ChocopopChannel } from '../../services/ChocopopService';
 
 const { height: H } = Dimensions.get('window');
-const CHANNEL_THUMB_W = 140;
-const CHANNEL_THUMB_H = 90;
 const CAROUSEL_H = 165;
 const LIVE_ACCENT = '#BF40BF';
 
 // ─── Detección de entorno ─────────────────────────────────────────────────────
-// En Expo Go no existen módulos nativos de terceros (react-native-video)
 const IS_EXPO_GO = Constants.appOwnership === 'expo';
+
+// Headers para que el servidor de streaming acepte el request
+const STREAM_HEADERS = {
+  'Referer': 'http://tv.chocopopflow.com/',
+  'User-Agent': 'Mozilla/5.0 (Linux; Android 12; AFTMM Build/NS6271) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.61 Mobile Safari/537.36',
+  'Origin': 'http://tv.chocopopflow.com',
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function getInitials(name: string): string {
@@ -44,8 +45,7 @@ function getAccent(name: string): string {
   return ACCENT_COLORS[h % ACCENT_COLORS.length];
 }
 
-// ─── Video Player agnóstico ───────────────────────────────────────────────────
-// Usa react-native-video en builds, expo-av en Expo Go
+// ─── Video Player adaptativo ──────────────────────────────────────────────────
 function UniversalVideo({
   uri,
   onLoad,
@@ -57,40 +57,56 @@ function UniversalVideo({
   onError: (e?: any) => void;
   onBuffer?: (e: { isBuffering: boolean }) => void;
 }) {
+  console.log(`[Player] Iniciando stream: ${uri} | entorno: ${IS_EXPO_GO ? 'ExpoGo' : 'Build'}`);
+
   if (IS_EXPO_GO) {
-    // expo-av — disponible en Expo Go
-    const { Video: AvVideo, ResizeMode, AVPlaybackStatus } = require('expo-av');
+    const { Video: AvVideo, ResizeMode } = require('expo-av');
     return (
       <AvVideo
-        source={{ uri }}
+        source={{ uri, headers: STREAM_HEADERS }}
         style={StyleSheet.absoluteFillObject}
         resizeMode={ResizeMode.CONTAIN}
         shouldPlay
         isLooping={false}
         volume={1.0}
         onLoad={onLoad}
-        onError={onError}
+        onError={(e: any) => {
+          console.error('[Player expo-av] Error:', JSON.stringify(e));
+          onError(e);
+        }}
         onPlaybackStatusUpdate={(status: any) => {
-          if (!status.isLoaded && status.error) onError();
+          if (!status.isLoaded && status.error) {
+            console.error('[Player expo-av] PlaybackStatus error:', status.error);
+            onError();
+          }
           if (status.isPlaying && onBuffer) onBuffer({ isBuffering: false });
         }}
       />
     );
   }
 
-  // react-native-video — disponible en builds con módulos nativos
+  // react-native-video para builds — ExoPlayer nativo con HLS completo
   const RNVideo = require('react-native-video').default;
   return (
     <RNVideo
-      source={{ uri }}
+      source={{ uri, headers: STREAM_HEADERS }}
       style={StyleSheet.absoluteFillObject}
       resizeMode="contain"
       paused={false}
       repeat={false}
       volume={1.0}
-      onLoad={onLoad}
-      onError={onError}
-      onBuffer={onBuffer}
+      onLoad={() => {
+        console.log('[Player RNVideo] onLoad OK:', uri);
+        onLoad();
+      }}
+      onError={(e: any) => {
+        console.error('[Player RNVideo] Error:', JSON.stringify(e));
+        onError(e);
+      }}
+      onBuffer={({ isBuffering }: { isBuffering: boolean }) => {
+        console.log('[Player RNVideo] buffering:', isBuffering);
+        if (onBuffer) onBuffer({ isBuffering });
+      }}
       minLoadRetryCount={3}
       bufferConfig={{
         minBufferMs: 5000,
@@ -102,6 +118,34 @@ function UniversalVideo({
   );
 }
 
+// ─── Debug Overlay ───────────────────────────────────────────────────────────
+function DebugOverlay({ url, error, source }: { url: string; error: string; source: string }) {
+  return (
+    <View style={debugStyles.overlay}>
+      <Text style={debugStyles.title}>🔍 DEBUG</Text>
+      <Text style={debugStyles.label}>Entorno: <Text style={debugStyles.value}>{IS_EXPO_GO ? 'Expo Go' : 'Build'}</Text></Text>
+      <Text style={debugStyles.label}>Fuente datos: <Text style={debugStyles.value}>{source}</Text></Text>
+      <ScrollView style={{ maxHeight: 80 }}>
+        <Text style={debugStyles.label}>URL: <Text style={debugStyles.url}>{url || '(sin URL)'}</Text></Text>
+      </ScrollView>
+      {error ? <Text style={debugStyles.error}>Error: {error}</Text> : null}
+    </View>
+  );
+}
+
+const debugStyles = StyleSheet.create({
+  overlay: {
+    position: 'absolute', bottom: 180, left: 16, right: 16, zIndex: 999,
+    backgroundColor: 'rgba(0,0,0,0.92)', borderRadius: 10, padding: 12,
+    borderWidth: 1, borderColor: '#BF40BF',
+  },
+  title: { color: '#BF40BF', fontSize: 12, fontWeight: '900', marginBottom: 4 },
+  label: { color: '#888', fontSize: 10, marginBottom: 2 },
+  value: { color: '#fff', fontWeight: '700' },
+  url: { color: '#00e3fd', fontSize: 9 },
+  error: { color: '#ff4757', fontSize: 10, marginTop: 4, fontWeight: '700' },
+});
+
 // ─── Componente Principal ─────────────────────────────────────────────────────
 export default function TvChocopopPlayerScreen() {
   const navigation = useNavigation<any>();
@@ -112,12 +156,14 @@ export default function TvChocopopPlayerScreen() {
   const [current, setCurrent] = useState<ChocopopChannel | null>(initialChannel || null);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [errorDetail, setErrorDetail] = useState('');
   const [retryKey, setRetryKey] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
+  const [dataSource, setDataSource] = useState('cargando...');
 
   const pulsAnim = useRef(new Animated.Value(1)).current;
 
-  // ── Pulse loop ───────────────────────────────────────────────────────────────
   useEffect(() => {
     const pulse = () =>
       Animated.sequence([
@@ -127,15 +173,22 @@ export default function TvChocopopPlayerScreen() {
     pulse();
   }, []);
 
-  // ── Fetch canales ────────────────────────────────────────────────────────────
   useEffect(() => {
+    console.log('[ChocopopPlayer] Iniciando fetchChannels...');
     ChocopopService.fetchChannels().then((chs) => {
+      console.log(`[ChocopopPlayer] fetchChannels completado: ${chs.length} canales`);
+      if (chs.length > 0) {
+        console.log(`[ChocopopPlayer] Primera URL: ${chs[0].url}`);
+        // Detectar fuente aproximada por cantidad de canales
+        if (chs.length > 50) setDataSource('scraping (58+ canales)');
+        else if (chs.length > 30) setDataSource('Firestore (~35 canales)');
+        else setDataSource(`hardcoded (${chs.length} canales)`);
+      }
       setChannels(chs);
       if (!current && chs.length > 0) setCurrent(chs[0]);
     });
   }, []);
 
-  // ── Back handler ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const h = BackHandler.addEventListener('hardwareBackPress', () => {
       if (isFullscreen) {
@@ -148,24 +201,30 @@ export default function TvChocopopPlayerScreen() {
     return () => h.remove();
   }, [navigation, isFullscreen]);
 
-  // ── Cambiar canal ────────────────────────────────────────────────────────────
   const selectChannel = useCallback((ch: ChocopopChannel) => {
     if (ch.m3u8 === current?.m3u8) return;
     setIsLoading(true);
     setHasError(false);
+    setErrorDetail('');
     setCurrent(ch);
     setRetryKey((k) => k + 1);
   }, [current]);
 
   const handleLoad = useCallback(() => {
+    console.log('[ChocopopPlayer] ✅ Video cargado exitosamente');
     setIsLoading(false);
     setHasError(false);
+    setErrorDetail('');
   }, []);
 
   const handleError = useCallback((e?: any) => {
-    console.warn('[ChocopopPlayer] Error:', e?.error?.localizedDescription || e);
+    const detail = e?.error?.localizedDescription || e?.error?.errorString || JSON.stringify(e)?.slice(0, 150) || 'Error desconocido';
+    console.error('[ChocopopPlayer] ❌ Error reproduciendo:', detail);
+    setErrorDetail(detail);
     setHasError(true);
     setIsLoading(false);
+    // Auto-mostrar debug al primer error
+    setShowDebug(true);
   }, []);
 
   const handleBuffer = useCallback(({ isBuffering }: { isBuffering: boolean }) => {
@@ -175,12 +234,12 @@ export default function TvChocopopPlayerScreen() {
   const retry = useCallback(() => {
     setHasError(false);
     setIsLoading(true);
+    setErrorDetail('');
     setRetryKey((k) => k + 1);
   }, []);
 
   const keyExtractor = useCallback((item: ChocopopChannel) => item.m3u8, []);
 
-  // ── Card de canal ────────────────────────────────────────────────────────────
   const renderChannel = useCallback(({ item }: { item: ChocopopChannel }) => {
     const isActive = item.m3u8 === current?.m3u8;
     const accent = getAccent(item.name);
@@ -235,7 +294,6 @@ export default function TvChocopopPlayerScreen() {
 
   return (
     <View style={styles.root}>
-      {/* ── VIDEO PLAYER ────────────────────────────────────────── */}
       <View style={[styles.playerContainer, isFullscreen && { height: H }]}>
 
         {!hasError && (
@@ -248,7 +306,6 @@ export default function TvChocopopPlayerScreen() {
           />
         )}
 
-        {/* Overlay: Loading */}
         {isLoading && !hasError && (
           <View style={styles.overlayCenter}>
             <Radio color={LIVE_ACCENT} size={40} strokeWidth={1.5} />
@@ -260,13 +317,12 @@ export default function TvChocopopPlayerScreen() {
           </View>
         )}
 
-        {/* Overlay: Error */}
         {hasError && (
           <View style={styles.overlayCenter}>
             <WifiOff color={LIVE_ACCENT} size={40} strokeWidth={1.5} />
             <Text style={styles.overlayTitle}>{current.name}</Text>
             <Text style={styles.errorSub}>Señal no disponible</Text>
-            <TvFocusable onPress={retry} scaleTo={1.08} borderWidth={0} style={{ borderRadius: 10, marginTop: 20 }}>
+            <TvFocusable onPress={retry} scaleTo={1.08} borderWidth={0} style={{ borderRadius: 10, marginTop: 16 }}>
               {(f: boolean) => (
                 <View style={[styles.retryBtn, f && styles.retryBtnFocused]}>
                   <RefreshCw color={f ? '#000' : LIVE_ACCENT} size={16} />
@@ -277,6 +333,15 @@ export default function TvChocopopPlayerScreen() {
           </View>
         )}
 
+        {/* Debug Overlay */}
+        {showDebug && (
+          <DebugOverlay
+            url={current.url}
+            error={errorDetail}
+            source={dataSource}
+          />
+        )}
+
         <LinearGradient
           colors={['transparent', 'rgba(0,0,0,0.85)']}
           start={{ x: 0, y: 0.4 }}
@@ -285,7 +350,6 @@ export default function TvChocopopPlayerScreen() {
           pointerEvents="none"
         />
 
-        {/* Badge flotante */}
         {!isFullscreen && (
           <Animated.View style={styles.badge} pointerEvents="box-none">
             <TvFocusable onPress={() => navigation.goBack()} scaleTo={1.1} borderWidth={0} style={{ borderRadius: 50 }}>
@@ -309,6 +373,14 @@ export default function TvChocopopPlayerScreen() {
                 </View>
               )}
             </TvFocusable>
+            {/* Botón Debug */}
+            <TvFocusable onPress={() => setShowDebug(v => !v)} scaleTo={1.1} borderWidth={0} style={{ borderRadius: 50 }}>
+              {(f: boolean) => (
+                <View style={[styles.badgeBtn, f && styles.badgeBtnFocused, showDebug && { borderColor: '#BF40BF' }]}>
+                  <Bug color={f ? '#000' : (showDebug ? '#BF40BF' : '#888')} size={16} />
+                </View>
+              )}
+            </TvFocusable>
             <TvFocusable onPress={() => setIsFullscreen(v => !v)} scaleTo={1.1} borderWidth={0} style={{ borderRadius: 50 }}>
               {(f: boolean) => (
                 <View style={[styles.badgeBtn, f && styles.badgeBtnFocused]}>
@@ -322,7 +394,6 @@ export default function TvChocopopPlayerScreen() {
         )}
       </View>
 
-      {/* ── CARRUSEL DE CANALES ──────────────────────────────────── */}
       {!isFullscreen && (
         <View style={styles.carousel}>
           <FlatList
@@ -342,7 +413,6 @@ export default function TvChocopopPlayerScreen() {
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000' },
   centerScreen: {
@@ -393,7 +463,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)',
   },
   channelCard: {
-    width: CHANNEL_THUMB_W, height: CHANNEL_THUMB_H,
+    width: 140, height: 90,
     borderRadius: 12, overflow: 'hidden',
     backgroundColor: '#111118', borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.07)', position: 'relative',
