@@ -63,7 +63,7 @@ const AD_BLOCKER_BEFORE_LOAD = `
   window.confirm = function(){ return true; };
   window.prompt = function(){ return ''; };
 
-  // ─ Hook JW Player: forzar autostart antes de que se inicialice ─
+  // ─ Hook JW Player: forzar autostart + pantalla completa ─
   var _jw_raw = null;
   Object.defineProperty(window, 'jwplayer', {
     configurable: true,
@@ -75,8 +75,11 @@ const AD_BLOCKER_BEFORE_LOAD = `
         var _setup = inst.setup;
         inst.setup = function(cfg){
           cfg = cfg || {};
-          cfg.autostart = true;   // ← forzar autoplay
-          cfg.mute      = false;  // ← sin mute
+          cfg.autostart  = true;      // ← forzar autoplay
+          cfg.mute       = false;     // ← sin mute
+          cfg.stretching = 'fill';    // ← llenar el contenedor
+          cfg.width      = '100%';    // ← ancho completo
+          cfg.height     = '100%';    // ← alto completo
           return _setup.call(this, cfg);
         };
         return inst;
@@ -85,6 +88,39 @@ const AD_BLOCKER_BEFORE_LOAD = `
       try{ Object.keys(jwp).forEach(function(k){ try{ _jw_raw[k]=jwp[k]; }catch(e){} }); }catch(e){}
     }
   });
+
+  // ─ CSS fullscreen global ANTES de que renderice cualquier elemento ─
+  var _fs_style = document.createElement('style');
+  _fs_style.textContent = [
+    'html, body {',
+    '  margin:0!important; padding:0!important;',
+    '  overflow:hidden!important; background:#000!important;',
+    '  width:100vw!important; height:100vh!important;',
+    '}',
+    'iframe {',
+    '  position:fixed!important; top:0!important; left:0!important;',
+    '  width:100vw!important; height:100vh!important;',
+    '  border:none!important; background:#000!important; z-index:9998!important;',
+    '}',
+    'video {',
+    '  position:fixed!important; top:0!important; left:0!important;',
+    '  width:100vw!important; height:100vh!important;',
+    '  object-fit:contain!important; background:#000!important; z-index:9999!important;',
+    '}',
+    /* Cubrir contenedores comunes de reproductores */
+    '[class*="player"], [id*="player"], .jwplayer, #jwplayer {',
+    '  position:fixed!important; top:0!important; left:0!important;',
+    '  width:100vw!important; height:100vh!important; z-index:9997!important;',
+    '}',
+  ].join('\n');
+  // Inyectar apenas haya un <head>, si no, esperar DOMContentLoaded
+  if (document.head) {
+    document.head.appendChild(_fs_style);
+  } else {
+    document.addEventListener('DOMContentLoaded', function(){
+      if (document.head) document.head.appendChild(_fs_style);
+    });
+  }
 })(); true;
 `;
 
